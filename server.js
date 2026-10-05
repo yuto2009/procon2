@@ -7,6 +7,14 @@ console.log(" このターミナルに出る");//ターミナル確認
 const app = express();//expressを初期化 appにロードする
 app.use(express.json());//json形式のデータを受け取るためのミドルウェア
 const server = http.createServer(app);//httpサーバーを作成
+const sesseion = require("express-session");//セッション管理のためのモジュールを読み込む
+const sessionMiddleware = sesseion({
+  secret: "secret-key",//セッションの署名に使用する秘密鍵
+  resave: false,//セッションが変更されていない場合に再保存しない
+  saveUninitialized: true,//初期化されていないセッションを保存する
+  cookie: { secure: false },//クッキーのセキュリティ設定
+})
+app.use(sessionMiddleware);
 /*(async () => {
   let db;
   try {
@@ -24,14 +32,31 @@ const server = http.createServer(app);//httpサーバーを作成
   }
     */
   const io = new Server(server, {
-    cors: { origin: "*" },
+    cors: {
+      origin: "http://localhost:5173",//CORSの許可
+      credentials: true,
+    },
     connectionStateRecovery: {}
   });//socket.ioサーバーを作成し、CORSを許可する
+  io.engine.use(sessionMiddleware);//socket.ioでセッションを使用するための設定
   io .on("connection", (socket) => {
+    const sess = socket.request.session;
     console.log("クライアントが接続しました");
-    
+    socket.on("setName", (name) => {
+      sess.reload((err) => {
+        if (err) {
+          console.error("セッションのリロードに失敗しました:", err);
+          return;
+        }
+      sess.name = name;
+      sess.save(() => {
+        console.log("セッションに名前を保存しました:", sess.name, sess.id);
+      });
+      });
+    });
+
   });//接続処理
-   server.listen(3000, () => {
+   server.listen(3001, () => {
     console.log("起動");
-  });//サーバーを起動し、ポート3000で待機する
+  });//サーバーを起動し、ポート3001で待機する
 //})(); //即時関数を使って非同期処理を行う範囲
