@@ -5,15 +5,6 @@ const socket = socketio("http://localhost:3001", { withCredentials: true });
 import TitleScene from "./scenes/TitleScene";
 function PhaserGame() {
     const gameRef = useRef(null);
-    const [name,setName] = useState("");
-    function startGame(value) {
-        if(!value){
-            alert("名前を入力してください");
-            return;
-        }
-        setName(value);
-        socket.emit("setName", value);
-    }
     useEffect(() => {
         socket.on("connect", () => {
             console.log("Connected to server");
@@ -41,8 +32,6 @@ function PhaserGame() {
     }, []);
 
     return <div ref={gameRef}>
-            <input type="text" value={name} onChange={(e) => setName(e.target.value)} />
-            <button onClick={() => startGame(name)}>Start Game</button>
     </div>;
 }
 

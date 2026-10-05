@@ -52,9 +52,9 @@ app.use(sessionMiddleware);
       sess.save(() => {
         console.log("セッションに名前を保存しました:", sess.name, sess.id);
       });
-      });
+      }); 
+        socket.emit("startGame", { name: sess.name, sessionId: sess.id });
     });
-
   });//接続処理
    server.listen(3001, () => {
     console.log("起動");
