@@ -1,15 +1,11 @@
-import { useState } from 'react'
-import './App.css'
-import PhaserGame from './game/phaserGame';
+import PhaserGame from "./game/PhaserGame";
 
 function App() {
-  return (
-    <div>
-      <h1>My Game</h1>
-
-      <PhaserGame />
-    </div>
-  );
+    return (
+        <div>
+            <PhaserGame />
+        </div>
+    );
 }
 
-export default App
+export default App;

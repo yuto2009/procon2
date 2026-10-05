@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import Phaser from "phaser";
 import socketio from "socket.io-client";
 const socket = socketio("http://localhost:3001", { withCredentials: true });
+import TitleScene from "./scenes/TitleScene";
 function PhaserGame() {
     const gameRef = useRef(null);
     const [name,setName] = useState("");
@@ -19,7 +20,6 @@ function PhaserGame() {
         });
         const config = {
             type: Phaser.AUTO,
-
             width: 800,
             height: 600,
 
@@ -27,14 +27,9 @@ function PhaserGame() {
 
             backgroundColor: "#222222",
 
-            scene: {
-                create() {
-                    this.add.text(250, 280, "Hello Phaser 3!", {
-                        fontSize: "32px",
-                        color: "#ffffff",
-                    });
-                },
-            },
+            scene: [
+                TitleScene
+            ]
         };
 
         const game = new Phaser.Game(config);
