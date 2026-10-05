@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import Phaser from "phaser";
 import socketio from "socket.io-client";
+import WaitingScene from "./scenes/WaitingScene";
 const socket = socketio("http://localhost:3001", { withCredentials: true });
 import TitleScene from "./scenes/TitleScene";
 function PhaserGame() {
@@ -19,7 +20,8 @@ function PhaserGame() {
             backgroundColor: "#222222",
 
             scene: [
-                TitleScene
+                TitleScene,
+                WaitingScene
             ]
         };
 

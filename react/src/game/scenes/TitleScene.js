@@ -41,7 +41,7 @@ export default class TitleScene extends Phaser.Scene {
         });
 
         startButton.on("pointerdown", () => {
-            console.log("ゲームスタート");
+            this.scene.start("WaitingScene");
         });
     }
 }
