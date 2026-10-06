@@ -91,12 +91,18 @@ io.on("connection", (socket) => {
       });
     });
   });
-
+  socket.on("leaveRoom", (data) => {
+      console.log("leaveRoom", data);
+      const roomId = [...socket.rooms].find((r) => r !== socket.id);
+      socket.to(roomId).emit("playerLeft");
+      socket.leave(roomId);
+  });
   // 切断:同じルームの相手に知らせる
   socket.on("disconnecting", () => {
     for (const roomId of socket.rooms) {
       if (roomId !== socket.id) {
         socket.to(roomId).emit("playerLeft");
+        socket.leave(roomId);
       }
     }
   });

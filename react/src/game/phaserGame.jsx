@@ -3,7 +3,7 @@ import Phaser from "phaser";
 import TitleScene from "./scenes/TitleScene";
 import NameForm from "./scenes/nameform";
 import WaitingScene from "./scenes/WaitingScene";
-
+import GameScene from "./scenes/game";
 function PhaserGame() {
     const gameRef = useRef(null);
 
@@ -16,7 +16,7 @@ function PhaserGame() {
             backgroundColor: "#222222",
             audio: { noAudio: true },
             dom: { createContainer: true },
-            scene: [TitleScene, NameForm, WaitingScene]
+            scene: [TitleScene, NameForm, WaitingScene,GameScene],
         };
 
         const game = new Phaser.Game(config);
