@@ -1,11 +1,12 @@
 import Phaser from "phaser";
-
+const socket = window.socket;
 export default class TitleScene extends Phaser.Scene {
     constructor() {
         super("TitleScene");
     }
-
+    
     create() {
+      
         this.cameras.main.setBackgroundColor("#222222");
 
         this.add.text(400, 180, "MY GAME", {
@@ -39,9 +40,10 @@ export default class TitleScene extends Phaser.Scene {
                 backgroundColor: "#444444"
             });
         });
-
+       
         startButton.on("pointerdown", () => {
-            this.scene.start("WaitingScene");
+   
+            this.scene.start("NameForm");
         });
     }
 }
