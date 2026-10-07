@@ -106,6 +106,17 @@ io.on("connection", (socket) => {
       }
     }
   });
+  socket.on("startGame",() => {
+    const roomId = [...socket.rooms].find((r) => r!== socket.id);
+    if(!roomId){
+        return;
+    }
+    const room = io.sockets.adapter.rooms.get(roomId);
+      if (room.size < 2) {
+         return socket.emit("not member");
+      }
+      io.to(roomId).emit("startGame");
+  });
 });
 
 server.listen(3001, () => {

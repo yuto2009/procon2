@@ -7,6 +7,6 @@ export default class GameScene extends Phaser.Scene{
     create() {
         this.cameras.main.setBackgroundColor("#222222");
         const myName = this.registry.get("playerName"); 
-    
+        const opponentName = this.registry.get("opponentName");
 }
 }

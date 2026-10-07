@@ -8,11 +8,14 @@ export default class WaitingScene extends Phaser.Scene {
 
     create() {
         this.cameras.main.setBackgroundColor("#222222");
-
+        let isReady = false;
+    
         const myName = this.registry.get("playerName");
         const roomId = this.registry.get("roomId");
         const opponentName = this.registry.get("opponentName");
-
+            if(opponentName){
+                isReady = true;
+        }    
         this.add.text(400, 100, "MULTIPLAYER", {
             fontSize: "48px", color: "#ffffff", fontStyle: "bold"
         }).setOrigin(0.5);
@@ -28,6 +31,7 @@ export default class WaitingScene extends Phaser.Scene {
         const setReady = () => {
             waitingText.setText("準備完了");
             waitingText.setColor("#66ff66");
+            isReady = true;
         };
         const setWaiting = () =>{
             waitingText.setText("プレイヤーを待っています...");
@@ -63,6 +67,7 @@ export default class WaitingScene extends Phaser.Scene {
             player2Text.setText("PLAYER 2  待機中...");
             player2Text.setColor("#aaaaaa");
             setWaiting();
+            isReady = false;
         };
         const disroom = this.add.dom(400, 500, "button", {
             width: "200px", height: "40px", fontSize: "20px", backgroundColor: "#444444", color: "#ffffff"
@@ -75,14 +80,32 @@ export default class WaitingScene extends Phaser.Scene {
             this.registry.set("playerName", null);
             this.scene.start("TitleScene");
         });
+        // ゲーム開始ボタン
+        const startButton = this.add.dom(400, 450, "button",{
+            width: "200px", height: "40px", fontSize: "20px", backgroundColor: "#444444", color: "#ffffff"
+        }, "ゲームを開始");
+         const onStartGame = () => {
+                console.log("gamestart");
+                this.scene.start("GameScene");
+        } 
+        startButton.node.addEventListener("click", () => {
+            if(isReady == false){
+                alert("準備ができていません");
+                return;
+            }
+            socket.emit("startGame");
+        });
+       
+        socket.on("startGame",onStartGame);
         socket.on("playerLeft", onPlayerLeft);
         socket.on("writingscene", onWritingScene);
         socket.on("joinroom", onJoinRoom);
-        
+
         this.events.once("shutdown", () => {
             socket.off("writingscene", onWritingScene);
             socket.off("joinroom", onJoinRoom);
             socket.off("playerLeft", onPlayerLeft);
+            socket.off("startGame", onStartGame);
         });
     }
 }
