@@ -16,6 +16,12 @@ function PhaserGame() {
             backgroundColor: "#222222",
             audio: { noAudio: true },
             dom: { createContainer: true },
+            physics: {
+                default: "arcade",
+                arcade: {gravity: { y: 1200}, debug: false},
+            },
+                        pixelArt: true,      // 拡大してもにじまない
+            roundPixels: true,   // カメラ追従でドットがちらつかない
             scene: [TitleScene, NameForm, WaitingScene,GameScene],
         };
 

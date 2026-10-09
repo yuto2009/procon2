@@ -45,5 +45,7 @@ export default class TitleScene extends Phaser.Scene {
    
             this.scene.start("NameForm");
         });
+                // 動作確認用(確認が終わったら消す)
+        this.input.keyboard.once("keydown-G", () => this.scene.start("GameScene"));
     }
 }
