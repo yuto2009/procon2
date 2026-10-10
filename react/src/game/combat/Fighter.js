@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { ATTACKS, PARRY, DODGE, STAMINA, MOVE, BUFFER } from "./frameData";
+import { ATTACKS, PARRY, DODGE, STAMINA, MOVE, BUFFER, FX} from "./frameData";
 
 const ACTIONS = ["fist", "sword", "dodge", "parry"];
 
@@ -81,6 +81,7 @@ export default class Fighter {
     this.buffered = null;
     this.bufferLeft = 0;
     this.jumpLeft = 0;
+    this.flashLeft = 0;
   }
 
   enter(state) {
@@ -91,6 +92,7 @@ export default class Fighter {
   // ---------- 毎tick(1/60秒)呼ぶ ----------
   tick(input, targets) {
     this.frame++;
+    if (this.flashLeft > 0) this.flashLeft--;
     this.hitDebug.setVisible(false);
     this.bufferInput(input);
 
@@ -174,25 +176,21 @@ export default class Fighter {
   }
 
   // ---------- 攻撃処理 ----------
-  tickAttack(targets) {
+    tickAttack(targets) {
     const a = this.attack;
     const f = this.frame;
     this.body.setVelocityX(0);
 
     if (f >= a.startup && f < a.startup + a.active) {
       const rect = this.hitRect(a);
-      this.hitDebug
-        .setVisible(true)
-        .setPosition(rect.centerX, rect.centerY)
-        .setSize(rect.width, rect.height);
+
+      if (DEBUG)
+        this.hitDebug
+          .setVisible(true)
+          .setPosition(rect.centerX, rect.centerY)
+          .setSize(rect.width, rect.height);
+
       if (!this.hitDone) {
-        const rect = this.hitRect(a);
-        if (DEBUG)
-          // ← 内側は DEBUG 条件を付ける
-          this.hitDebug
-            .setVisible(true)
-            .setPosition(rect.centerX, rect.centerY)
-            .setSize(rect.width, rect.height);
         for (const t of targets) {
           if (
             Phaser.Geom.Intersects.RectangleToRectangle(
@@ -228,6 +226,7 @@ export default class Fighter {
       Math.sign(attacker.sprite.x - this.sprite.x) === this.facing;
 
     // パリィ成功: ダメージ無効 + 相手スタン + スタミナ回復
+        // パリィ成功
     if (
       this.state === S.PARRY &&
       this.frame <= PARRY.window &&
@@ -235,7 +234,7 @@ export default class Fighter {
     ) {
       this.stamina = Math.min(STAMINA.max, this.stamina + PARRY.staminaGain);
       attacker.stun(PARRY.enemyStun);
-      this.scene.events.emit("parry", this);
+      this.scene.events.emit("parry", this, attacker);   // ← attacker を追加
       return;
     }
     // 回避の無敵フレーム
@@ -244,6 +243,8 @@ export default class Fighter {
     this.hp -= a.damage;
     const dir = Math.sign(this.sprite.x - attacker.sprite.x) || 1;
     this.body.setVelocityX(dir * a.knockback);
+    this.flashLeft = FX.flashFrames;                       // ← 追加
+    this.scene.events.emit("hit", this, attacker, a);      // ← 追加
     if (this.hp <= 0) {
       this.hp = 0;
       this.enter(S.DEAD);
@@ -334,6 +335,8 @@ export default class Fighter {
         else if (Math.abs(this.body.velocity.x) > 10)
           v.anims.play(`${this.texture}-run`, true);
         else v.anims.play(`${this.texture}-idle`, true);
+        if(this.flashLeft > 0) v.setTintFill(0xffffff);
+        else v.clearTint();
       }
     }
   }

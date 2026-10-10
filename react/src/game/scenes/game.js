@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 import Fighter, { S } from "../combat/Fighter";
-import { FPS, STAMINA } from "../combat/frameData";
+import { FPS, STAMINA, FX } from "../combat/frameData";
 import { createTuningPanel } from "../debug/TuningPanel";
 
 const STEP = 1000 / FPS;
@@ -28,6 +28,9 @@ export default class GameScene extends Phaser.Scene {
         this.physics.add.existing(platform, true);
 
         // キャラ
+        this.hitStop = 0;
+        this.hitVictim = null;
+        this.physics.world.resume();
         this.player = new Fighter(this, 200, 500, { color: 0x66aaff, texture: "player" });
         this.dummy = new Fighter(this, 700, 500, { color: 0xff6666, texture: "enemy" });
         for (const f of [this.player, this.dummy]) {
@@ -50,12 +53,26 @@ export default class GameScene extends Phaser.Scene {
             fontSize: "14px", color: "#aaaaaa",
         }).setOrigin(0.5).setScrollFactor(0).setDepth(10);
 
-        const onParry = (f) => this.popText(f.sprite.x, f.sprite.y - 50, "PARRY!");
+        const onParry = (f) => {
+            this.popText(f.sprite.x, f.sprite.y - 50, "PARRY!");
+            this.hitStop = Math.max(this.hitStop, FX.parryStop);
+            this.hitVictim = null;
+            this.cameras.main.shake(100, FX.parryShake);
+        };
+        const onHit = (victim, attacker, atk) => {
+            this.hitStop = Math.max(this.hitStop, atk.hitStop ?? 0);
+            this.hitVictim = victim;
+            this.cameras.main.shake(100, atk.shake ?? 0);
+        };
         this.events.on("parry", onParry);
-        this.events.once("shutdown", () => this.events.off("parry", onParry));
+        this.events.on("hit", onHit);
+        this.events.once("shutdown", () => {
+            this.events.off("parry", onParry);
+            this.events.off("hit", onHit);
+        });
         this.tuning = createTuningPanel();
         this.input.keyboard.on("keydown-T", () => this.tuning.toggle());
-        this.events.once("shutdown",() => this.tuning.destroy());
+        this.events.once("shutdown", () => this.tuning.destroy());
     }
 
     // 押した瞬間を取りこぼさないよう、毎描画フレームで拾ってためておく
@@ -76,13 +93,23 @@ export default class GameScene extends Phaser.Scene {
             this.acc -= STEP;
             this.tick();
         }
+
+        // ヒットストップ中は物理も止める
+        if (this.hitStop > 0) this.physics.world.pause();
+        else this.physics.world.resume();
+
         this.player.render();
         this.dummy.render();
+
+        // 停止中は被弾側を小刻みに震わせる
+        if (this.hitStop > 0 && this.hitVictim) {
+            this.hitVictim.view.x += this.hitStop % 2 ? 3 : -3;
+        }
         this.drawHud();
     }
-
     // 1/60秒ごとの更新(サーバー同期/ゴースト記録もここに集約できる)
     tick() {
+        if (this.hitStop > 0 ) {this.hitStop--; return;}
         const k = this.keys;
         const input = {
             x: (k.D.isDown || k.RIGHT.isDown ? 1 : 0) - (k.A.isDown || k.LEFT.isDown ? 1 : 0),
