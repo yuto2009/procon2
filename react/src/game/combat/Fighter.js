@@ -1,5 +1,7 @@
 import Phaser from "phaser";
-import { ATTACKS, PARRY, DODGE, STAMINA, MOVE } from "./frameData";
+import { ATTACKS, PARRY, DODGE, STAMINA, MOVE, BUFFER } from "./frameData";
+
+const ACTIONS = ["fist", "sword", "dodge", "parry"];
 
 export const S = {
   IDLE: "idle",
@@ -76,6 +78,9 @@ export default class Fighter {
     this.attack = null;
     this.stunFrames = 0;
     this.enter(S.IDLE);
+    this.buffered = null;
+    this.bufferLeft = 0;
+    this.jumpLeft = 0;
   }
 
   enter(state) {
@@ -87,6 +92,7 @@ export default class Fighter {
   tick(input, targets) {
     this.frame++;
     this.hitDebug.setVisible(false);
+    this.bufferInput(input);
 
     switch (this.state) {
       case S.IDLE:
@@ -109,6 +115,19 @@ export default class Fighter {
     this.updateStamina();
   }
 
+  bufferInput(input) {
+    if (this.buffered && --this.bufferLeft <= 0) this.buffered = null;
+    if (this.jumpLeft > 0) this.jumpLeft--;
+
+    for (const a of ACTIONS) {
+      if (input[a]) {
+        this.buffered = a;
+        this.bufferLeft = BUFFER.frames;
+      }
+    }
+    if (input.jump) this.jumpLeft = BUFFER.frames;
+  }
+
   tickFree(input) {
     // スタミナ枯渇 → 行動不能
     if (this.stamina <= 0) return this.stun(STAMINA.exhaustFrames);
@@ -117,12 +136,18 @@ export default class Fighter {
     if (input.x !== 0) this.facing = input.x;
 
     const onGround = this.body.blocked.down || this.body.touching.down;
-    if (input.jump && onGround) this.body.setVelocityY(-MOVE.jump);
+    if (this.jumpLeft > 0 && onGround) {
+      this.body.setVelocityY(-MOVE.jump);
+      this.jumpLeft = 0;
+    }
 
-    if (input.parry) return this.startParry();
-    if (input.dodge) return this.startDodge(input.x || this.facing);
-    if (input.sword) return this.startAttack("sword");
-    if (input.fist) return this.startAttack("fist");
+    const action = this.buffered;
+    if (!action) return;
+    this.buffered = null;
+    if (action === "parry") return this.startParry();
+    if (action === "dodge") return this.startDodge(input.x || this.facing);
+    if (action === "sword") return this.startAttack("sword");
+    if (action === "fist") return this.startAttack("fist");
   }
 
   // ---------- 行動の開始 ----------
@@ -230,6 +255,8 @@ export default class Fighter {
   stun(frames) {
     this.stunFrames = frames;
     this.attack = null;
+    this.buffered = null;
+    this.jumpLeft = 0;
     this.enter(S.STUN);
   }
 

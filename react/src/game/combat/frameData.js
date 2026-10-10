@@ -2,6 +2,8 @@ export const FPS = 60;
 
 export const MOVE = {speed: 220, jump: 520};
 
+export const BUFFER = {frames: 8};
+
 export const STAMINA = {max: 100, regenPerFrame: 0.6, regenDelay: 40, exhaustFrames:60};
 
 export const ATTACKS = {

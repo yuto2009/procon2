@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import Fighter, { S } from "../combat/Fighter";
 import { FPS, STAMINA } from "../combat/frameData";
+import { createTuningPanel } from "../debug/TuningPanel";
 
 const STEP = 1000 / FPS;
 
@@ -52,7 +53,9 @@ export default class GameScene extends Phaser.Scene {
         const onParry = (f) => this.popText(f.sprite.x, f.sprite.y - 50, "PARRY!");
         this.events.on("parry", onParry);
         this.events.once("shutdown", () => this.events.off("parry", onParry));
-        // TitleScene.create() の末尾に追加(確認が終わったら消す)
+        this.tuning = createTuningPanel();
+        this.input.keyboard.on("keydown-T", () => this.tuning.toggle());
+        this.events.once("shutdown",() => this.tuning.destroy());
     }
 
     // 押した瞬間を取りこぼさないよう、毎描画フレームで拾ってためておく
