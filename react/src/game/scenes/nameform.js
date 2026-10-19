@@ -36,8 +36,13 @@ export default class NameForm extends Phaser.Scene {
             if (!name) return alert("名前を入力してください");
 
             this.registry.set("playerName", name);
+
+            this.registry.set("worldId","A");
+            this.registry.set("worldRole","host");
+
             this.registry.set("roomId", null);
             this.registry.set("opponentName", null);
+
             socket.emit("setName", name);
             this.scene.start("WaitingScene");
         });
@@ -69,6 +74,9 @@ export default class NameForm extends Phaser.Scene {
         const onJoined = (data) => {
             this.registry.set("roomId", data.roomId);
             this.registry.set("opponentName", data.hostName);
+
+            this.registry.set("worldId","B");
+            this.registry.set("worldRole","guest");
             this.scene.start("WaitingScene");
         };
         const onError = (msg) => alert(msg);

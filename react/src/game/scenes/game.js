@@ -16,26 +16,87 @@ export default class GameScene extends Phaser.Scene {
     }
 
     create() {
-        this.cameras.main.setBackgroundColor("#222222");
         const myName = this.registry.get("playerName") ?? "PLAYER";
 
-        // ステージ
+        const worldId = this.registry.get("worldId") ?? "A";
+
+        const world = worldId === "B"
+            ? {
+                name: "WORLD B - RUINS",
+                background: "#24203b",
+                groundColor: 0x504866,
+                platformColor: 0x78698f,
+                dummyX: 1200,
+                platforms: [
+                    { x: 480, y: 460, width: 240 },
+                    { x: 1050, y: 390, width: 300 }
+                ]
+            }
+            : {
+                name: "WORLD A - FOREST",
+                background: "#1d352b",
+                groundColor: 0x526c4d,
+                platformColor: 0x77945e,
+                dummyX: 700,
+                platforms: [
+                    { x: 900, y: 440, width: 200 }
+                ]
+            };
+
+        this.cameras.main.setBackgroundColor(world.background);
         this.physics.world.setBounds(0, 0, 1600, 600);
         this.cameras.main.setBounds(0, 0, 1600, 600);
-        const ground = this.add.rectangle(800, 580, 1600, 40, 0x555555);
-        this.physics.add.existing(ground, true);
-        const platform = this.add.rectangle(900, 440, 200, 20, 0x555555);
-        this.physics.add.existing(platform, true);
 
+        const ground = this.add.rectangle(
+            800, 580, 1600, 40, world.groundColor
+        );
+
+        this.physics.add.existing(ground, true);
+
+        const platforms = world.platforms.map((p) => {
+            const platform = this.add.rectangle(
+                p.x,
+                p.y,
+                p.width,
+                20,
+                world.platformColor
+            );
+
+            this.physics.add.existing(platform, true);
+
+            return platform;
+        });
+
+        this.add.text(400, 8, world.name, {
+            fontSize: "18px",
+            color: "#ffffff",
+            fontStyle: "bold"
+        })
+            .setOrigin(0.5, 0)
+            .setScrollFactor(0)
+            .setDepth(10);
+
+        this.dummySpawnX = world.dummyX;
+        
         // キャラ
         this.hitStop = 0;
         this.hitVictim = null;
         this.physics.world.resume();
         this.player = new Fighter(this, 200, 500, { color: 0x66aaff, texture: "player" });
-        this.dummy = new Fighter(this, 700, 500, { color: 0xff6666, texture: "enemy" });
-        for (const f of [this.player, this.dummy]) {
+        this.dummy = new Fighter(
+            this,
+            this.dummySpawnX,
+            500,
+            {
+                color: 0xff6666,
+                texture: "enemy"
+            }
+        ); for (const f of [this.player, this.dummy]) {
             this.physics.add.collider(f.sprite, ground);
-            this.physics.add.collider(f.sprite, platform);
+
+            for (const platform of platforms) {
+                this.physics.add.collider(f.sprite, platform);
+            }
         }
         this.cameras.main.startFollow(this.player.sprite, true, 0.1, 0.1);
 
@@ -109,7 +170,7 @@ export default class GameScene extends Phaser.Scene {
     }
     // 1/60秒ごとの更新(サーバー同期/ゴースト記録もここに集約できる)
     tick() {
-        if (this.hitStop > 0 ) {this.hitStop--; return;}
+        if (this.hitStop > 0) { this.hitStop--; return; }
         const k = this.keys;
         const input = {
             x: (k.D.isDown || k.RIGHT.isDown ? 1 : 0) - (k.A.isDown || k.LEFT.isDown ? 1 : 0),
@@ -131,7 +192,7 @@ export default class GameScene extends Phaser.Scene {
     tickDummy() {
         const d = this.dummy;
         if (d.state === S.DEAD) {
-            if (++this.deadTimer > 90) { d.reset(700, 500); this.deadTimer = 0; }
+            if (++this.deadTimer > 90) { d.reset(this.dummySpawnX, 500); this.deadTimer = 0; }
             return;
         }
         if (d.state === S.IDLE) {
