@@ -4,6 +4,113 @@ import { FPS, STAMINA, FX } from "../combat/frameData";
 import { createTuningPanel } from "../debug/TuningPanel";
 
 const STEP = 1000 / FPS;
+// マップ生成用の基本設定
+const TILE_SIZE = 32;
+const CHUNK_COLS = 20;
+const CHUNK_WIDTH = TILE_SIZE * CHUNK_COLS;
+
+// 1チャンク分の平坦な地形データ
+const FLAT_PROFILE = Array(CHUNK_COLS).fill(17);
+
+// 地形・遺跡のパターン集
+// profile: 地面の高さ（数字が小さいほど高い）
+// null: 地面がない場所
+// platforms: 浮遊足場
+// pillars: 石柱
+// torches: たいまつ
+const MAP_TEMPLATES = [
+    {
+        name: "flat",
+        profile: FLAT_PROFILE,
+        platforms: [],
+        pillars: [],
+        torches: [
+            { col: 4, row: 12 },
+            { col: 16, row: 12 }
+        ]
+    },
+    {
+        name: "hill",
+        profile: [
+            17, 17, 17, 17, 16, 16, 15, 15, 14, 14,
+            14, 14, 14, 15, 15, 16, 16, 17, 17, 17
+        ],
+        platforms: [
+            { col: 8, width: 3, row: 15 }
+        ],
+        pillars: [
+            { col: 3, height: 2, width: 1 }
+        ],
+        torches: [
+            { col: 2, row: 12 },
+            { col: 17, row: 12 }
+        ]
+    },
+    {
+        name: "stairs",
+        profile: [
+            17, 17, 17, 16, 16, 16, 15, 15, 15, 14,
+            14, 14, 15, 15, 15, 16, 16, 17, 17, 17
+        ],
+        platforms: [
+            { col: 5, width: 3, row: 15 }
+        ],
+        pillars: [
+            { col: 12, height: 2, width: 1 }
+        ],
+        torches: [
+            { col: 3, row: 11 },
+            { col: 16, row: 11 }
+        ]
+    },
+    {
+        name: "valley",
+        profile: [
+            17, 17, 17, 18, 18, 18, 18, 18, 17, 17,
+            17, 17, 18, 18, 18, 17, 17, 17, 17, 17
+        ],
+        platforms: [
+            { col: 7, width: 4, row: 15 }
+        ],
+        pillars: [],
+        torches: [
+            { col: 2, row: 12 },
+            { col: 17, row: 12 }
+        ]
+    },
+    {
+        name: "pit",
+        profile: [
+            17, 17, 17, 17, 17, null, null, 17, 17, 17,
+            17, 17, 17, null, null, 17, 17, 17, 17, 17
+        ],
+        platforms: [
+            { col: 5, width: 3, row: 15 },
+            { col: 13, width: 3, row: 15 }
+        ],
+        pillars: [],
+        torches: [
+            { col: 2, row: 12 },
+            { col: 17, row: 12 }
+        ]
+    },
+    {
+        name: "ruins",
+        profile: FLAT_PROFILE,
+        platforms: [
+            { col: 5, width: 4, row: 15 },
+            { col: 13, width: 3, row: 15 }
+        ],
+        pillars: [
+            { col: 2, height: 2, width: 1 },
+            { col: 17, height: 2, width: 1 }
+        ],
+        torches: [
+            { col: 4, row: 12 },
+            { col: 15, row: 12 }
+        ]
+    }
+];
 
 export default class GameScene extends Phaser.Scene {
     constructor() {
@@ -18,55 +125,207 @@ export default class GameScene extends Phaser.Scene {
     create() {
         const myName = this.registry.get("playerName") ?? "PLAYER";
 
+        // 世界ごとの色
         const worldId = this.registry.get("worldId") ?? "A";
 
         const world = worldId === "B"
             ? {
                 name: "WORLD B - RUINS",
-                background: "#24203b",
-                groundColor: 0x504866,
-                platformColor: 0x78698f,
-                dummyX: 1200,
-                platforms: [
-                    { x: 480, y: 460, width: 240 },
-                    { x: 1050, y: 390, width: 300 }
-                ]
+                background: "#211b31",
+                groundColor: 0x51475f,
+                platformColor: 0x81749a,
+                dummyX: 1200
             }
             : {
-                name: "WORLD A - FOREST",
-                background: "#1d352b",
-                groundColor: 0x526c4d,
-                platformColor: 0x77945e,
-                dummyX: 700,
-                platforms: [
-                    { x: 900, y: 440, width: 200 }
-                ]
+                name: "WORLD A - DUNGEON",
+                background: "#171e27",
+                groundColor: 0x4d5862,
+                platformColor: 0x8b9a99,
+                dummyX: 700
             };
 
+        // マップ全体のサイズ
+        const TOTAL_CHUNKS = 103;
+        const WORLD_WIDTH = CHUNK_WIDTH * TOTAL_CHUNKS;
+        const WORLD_HEIGHT = 600;
+
         this.cameras.main.setBackgroundColor(world.background);
-        this.physics.world.setBounds(0, 0, 1600, 600);
-        this.cameras.main.setBounds(0, 0, 1600, 600);
+        this.physics.world.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+        this.cameras.main.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
 
-        const ground = this.add.rectangle(
-            800, 580, 1600, 40, world.groundColor
-        );
+        // 生成した地形を保存する配列
+        const terrain = [];
+        const platforms = [];
+        const obstacles = [];
 
-        this.physics.add.existing(ground, true);
+        // ランダムな整数を返す
+        const randomInt = (min, max) =>
+            Math.floor(Math.random() * (max - min + 1)) + min;
 
-        const platforms = world.platforms.map((p) => {
-            const platform = this.add.rectangle(
-                p.x,
-                p.y,
-                p.width,
-                20,
-                world.platformColor
-            );
+        // チャンクを左から順番に配置
+        for (let i = 0; i < TOTAL_CHUNKS; i++) {
+            const chunkX = i * CHUNK_WIDTH;
 
-            this.physics.add.existing(platform, true);
+            // 最初の2区間と最後の2区間は平坦にする
+            // スタート位置とゴール付近を安定させるため
+            const template =
+                i < 2 || i >= TOTAL_CHUNKS - 2
+                    ? MAP_TEMPLATES[0]
+                    : MAP_TEMPLATES[
+                    randomInt(1, MAP_TEMPLATES.length - 1)
+                    ];
 
-            return platform;
-        });
+            const profile = template.profile;
 
+            // 地面を同じ高さごとにまとめて生成
+            let col = 0;
+
+            while (col < CHUNK_COLS) {
+                const topRow = profile[col];
+
+                // nullなら穴なので地面を作らない
+                if (topRow === null) {
+                    col++;
+                    continue;
+                }
+
+                // 同じ高さのマスが何個続くかを調べる
+                let endCol = col + 1;
+
+                while (
+                    endCol < CHUNK_COLS &&
+                    profile[endCol] === topRow
+                ) {
+                    endCol++;
+                }
+
+                const left = chunkX + col * TILE_SIZE;
+                const width = (endCol - col) * TILE_SIZE;
+                const topY = topRow * TILE_SIZE;
+                const height = WORLD_HEIGHT - topY;
+
+                // 石造りの地面
+                const segment = this.add.rectangle(
+                    left + width / 2,
+                    topY + height / 2,
+                    width,
+                    height,
+                    world.groundColor
+                );
+
+                segment.setStrokeStyle(2, 0x25232d, 0.9);
+                this.physics.add.existing(segment, true);
+                terrain.push(segment);
+
+                // 石ブロックの縦目地
+                for (
+                    let seamX = left + TILE_SIZE;
+                    seamX < left + width;
+                    seamX += TILE_SIZE
+                ) {
+                    this.add.rectangle(
+                        seamX,
+                        topY + height / 2,
+                        2,
+                        height,
+                        0x25232d,
+                        0.65
+                    );
+                }
+
+                // 石ブロックの横目地
+                for (
+                    let seamY = topY + TILE_SIZE;
+                    seamY < WORLD_HEIGHT;
+                    seamY += TILE_SIZE
+                ) {
+                    this.add.rectangle(
+                        left + width / 2,
+                        seamY,
+                        width,
+                        2,
+                        0x25232d,
+                        0.55
+                    );
+                }
+
+                // 地面上端の明るい石の縁
+                this.add.rectangle(
+                    left + width / 2,
+                    topY + 3,
+                    width,
+                    6,
+                    world.platformColor
+                );
+
+                col = endCol;
+            }
+
+            // 浮遊足場を生成
+            for (const p of template.platforms) {
+                const platform = this.add.rectangle(
+                    chunkX + (p.col + p.width / 2) * TILE_SIZE,
+                    p.row * TILE_SIZE,
+                    p.width * TILE_SIZE - 8,
+                    18,
+                    world.platformColor
+                );
+
+                platform.setStrokeStyle(2, 0x25232d);
+                this.physics.add.existing(platform, true);
+                platforms.push(platform);
+            }
+
+            // 石柱を生成
+            for (const p of template.pillars) {
+                const baseRow = profile[p.col];
+
+                // 穴の上には石柱を生成しない
+                if (baseRow === null) continue;
+
+                const width = (p.width ?? 1) * TILE_SIZE;
+                const height = p.height * TILE_SIZE;
+                const x = chunkX + (p.col + (p.width ?? 1) / 2) * TILE_SIZE;
+                const groundY = baseRow * TILE_SIZE;
+
+                const pillar = this.add.rectangle(
+                    x,
+                    groundY - height / 2,
+                    width,
+                    height,
+                    world.platformColor
+                );
+
+                pillar.setStrokeStyle(2, 0x25232d);
+                this.physics.add.existing(pillar, true);
+                obstacles.push(pillar);
+            }
+
+            // たいまつを生成
+            for (const t of template.torches) {
+                const x = chunkX + (t.col + 0.5) * TILE_SIZE;
+                const y = t.row * TILE_SIZE;
+
+                // 光
+                this.add.circle(x, y, 15, 0xff8c33, 0.18);
+
+                // たいまつの台座
+                const torchBase = this.add.rectangle(
+                    x,
+                    y + 8,
+                    8,
+                    16,
+                    0xb9a18c
+                );
+
+                torchBase.setStrokeStyle(1, 0x25232d);
+
+                // 炎
+                this.add.circle(x, y - 3, 5, 0xffbb44, 1);
+            }
+        }
+
+        // 世界名を表示
         this.add.text(400, 8, world.name, {
             fontSize: "18px",
             color: "#ffffff",
@@ -76,8 +335,9 @@ export default class GameScene extends Phaser.Scene {
             .setScrollFactor(0)
             .setDepth(10);
 
+        // ダミーの出現位置
         this.dummySpawnX = world.dummyX;
-        
+
         // キャラ
         this.hitStop = 0;
         this.hitVictim = null;
@@ -91,9 +351,14 @@ export default class GameScene extends Phaser.Scene {
                 color: 0xff6666,
                 texture: "enemy"
             }
-        ); for (const f of [this.player, this.dummy]) {
-            this.physics.add.collider(f.sprite, ground);
+        );
+        for (const f of [this.player, this.dummy]) {
+            // すべての地面に衝突判定を設定
+            for (const segment of terrain) {
+                this.physics.add.collider(f.sprite, segment);
+            }
 
+            // すべての浮遊足場に衝突判定を設定
             for (const platform of platforms) {
                 this.physics.add.collider(f.sprite, platform);
             }
