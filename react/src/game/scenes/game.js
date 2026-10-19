@@ -2,7 +2,7 @@ import Phaser from "phaser";
 import Fighter, { S } from "../combat/Fighter";
 import { FPS, STAMINA, FX } from "../combat/frameData";
 import { createTuningPanel } from "../debug/TuningPanel";
-
+const socket = window.socket;
 const STEP = 1000 / FPS;
 
 export default class GameScene extends Phaser.Scene {

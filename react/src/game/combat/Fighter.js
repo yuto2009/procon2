@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 import { ATTACKS, PARRY, DODGE, STAMINA, MOVE, BUFFER, FX} from "./frameData";
-
+const socket = window.socket;
 const ACTIONS = ["fist", "sword", "dodge", "parry"];
 
 export const S = {
