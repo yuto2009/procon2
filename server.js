@@ -2,7 +2,7 @@ const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
 const session = require("express-session");
-
+const crypto = require("crypto");
 const app = express();
 app.use(express.json());
 const server = http.createServer(app);
@@ -37,8 +37,12 @@ function createRoomId() {
 
 io.on("connection", (socket) => {
   const sess = socket.request.session;
-  console.log("クライアントが接続しました");
-
+  if(!sess.user_id){
+  sess.user_id = crypto.randomUUID();
+  sess.save();
+  }
+  socket.data.userId = sess.user_id;
+  console.log("クライアントが接続", sess.user_id);
   // ルームを作る(ホスト)
   socket.on("setName", (name) => {
     name = String(name).trim().slice(0, 12);
@@ -117,6 +121,8 @@ io.on("connection", (socket) => {
       }
       io.to(roomId).emit("startGame");
   });
+    //プレイヤーの行動処理
+    
 });
 
 server.listen(3001, () => {
