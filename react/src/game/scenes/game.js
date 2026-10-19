@@ -2,7 +2,6 @@ import Phaser from "phaser";
 import Fighter, { S } from "../combat/Fighter";
 import { FPS, STAMINA, FX } from "../combat/frameData";
 import { createTuningPanel } from "../debug/TuningPanel";
-const socket = window.socket;
 const STEP = 1000 / FPS;
 // マップ生成用の基本設定
 const TILE_SIZE = 32;
@@ -118,6 +117,7 @@ export default class GameScene extends Phaser.Scene {
     }
 
     preload() {
+        this.socket = window.socket;
         this.load.spritesheet("player", "/assets/player.png", { frameWidth: 96, frameHeight: 32 });
         this.load.spritesheet("enemy", "/assets/enemy.png", { frameWidth: 96, frameHeight: 32 });
     }
@@ -399,6 +399,16 @@ export default class GameScene extends Phaser.Scene {
         this.tuning = createTuningPanel();
         this.input.keyboard.on("keydown-T", () => this.tuning.toggle());
         this.events.once("shutdown", () => this.tuning.destroy());
+        /*this.onPlayerAction = (OtherPlayerAction) => {
+            if (OtherPlayerAction.jump === true) {
+                console.log("他プレイヤーからのアクション", OtherPlayerAction);
+            }
+        };*/
+        this.socket.on("playeraction", this.onPlayerAction);
+
+        this.events.once("shutdown", () => {
+            this.socket.off("playeraction", this.onPlayerAction);
+        });
     }
 
     // 押した瞬間を取りこぼさないよう、毎描画フレームで拾ってためておく
@@ -443,10 +453,9 @@ export default class GameScene extends Phaser.Scene {
             ...this.pending,
         };
         this.pending = {};
-
+        this.socket.emit("gameaction", input);//１フレームごとに入力をサーバに送る
         this.player.tick(input, [this.dummy]);
         this.tickDummy();
-
         if (this.player.state === S.DEAD && !this.restarting) {
             this.restarting = true;
             this.time.delayedCall(1000, () => this.scene.restart());

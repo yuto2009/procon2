@@ -4,9 +4,9 @@ export default class TitleScene extends Phaser.Scene {
     constructor() {
         super("TitleScene");
     }
-    
+
     create() {
-      
+
         this.cameras.main.setBackgroundColor("#222222");
 
         this.add.text(400, 180, "MY GAME", {
@@ -26,8 +26,8 @@ export default class TitleScene extends Phaser.Scene {
                 bottom: 15
             }
         })
-        .setOrigin(0.5)
-        .setInteractive({ useHandCursor: true });
+            .setOrigin(0.5)
+            .setInteractive({ useHandCursor: true });
 
         startButton.on("pointerover", () => {
             startButton.setStyle({
@@ -40,12 +40,36 @@ export default class TitleScene extends Phaser.Scene {
                 backgroundColor: "#444444"
             });
         });
-       
+
         startButton.on("pointerdown", () => {
-   
+
             this.scene.start("NameForm");
         });
-                // 動作確認用(確認が終わったら消す)
+        // TitleScene の create() 内
+        this.socket = window.socket;
+        this.onSavedRoom = (data) => {
+            if (!data) return;
+            const { roomId, members } = data;
+            this.add.text(400, 400, `前回のルーム: ${roomId}(${members.join(" / ")})`, {
+                fontSize: "20px", color: "#ffffff",
+            }).setOrigin(0.5);
+            // クリックで復帰
+            const btn = this.add.text(400, 440, "[ 戻る ]", { fontSize: "20px", color: "#66ffff" })
+                .setOrigin(0.5).setInteractive();
+            btn.on("pointerdown", () => this.socket.emit("rejoinSaved"));
+        };
+        this.onJoined = ({ roomId, hostName, name }) => {
+            this.registry.set("playerName", name);
+            this.registry.set("roomId", roomId);
+            this.registry.set("opponentName", hostName ?? null);
+            this.scene.start("WaitingScene");
+        };
+        this.socket.once("joined", this.onJoined);
+        this.events.once("shutdown", () => this.socket.off("joined", this.onJoined));
+        this.socket.on("savedRoom", this.onSavedRoom);
+        this.socket.emit("getSavedRoom");
+        this.events.once("shutdown", () => this.socket.off("savedRoom", this.onSavedRoom));
+        // 動作確認用(確認が終わったら消す)
         this.input.keyboard.once("keydown-G", () => this.scene.start("GameScene"));
     }
 }
