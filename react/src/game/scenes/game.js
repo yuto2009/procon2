@@ -124,7 +124,7 @@ export default class GameScene extends Phaser.Scene {
 
     create() {
         const myName = this.registry.get("playerName") ?? "PLAYER";
-
+        const LastPosition = this.registry.get("LastPosition");
         // 世界ごとの色
         const worldId = this.registry.get("worldId") ?? "A";
 
@@ -342,7 +342,12 @@ export default class GameScene extends Phaser.Scene {
         this.hitStop = 0;
         this.hitVictim = null;
         this.physics.world.resume();
+        if(LastPosition === null){
         this.player = new Fighter(this, 200, 500, { color: 0x66aaff, texture: "player" });
+        }else{
+            console.log("restart",LastPosition);
+            this.player = new Fighter(this, LastPosition, 500,{ color: 0x66aaff, texture:"player"});
+        }
         this.dummy = new Fighter(
             this,
             this.dummySpawnX,
@@ -400,9 +405,9 @@ export default class GameScene extends Phaser.Scene {
         this.input.keyboard.on("keydown-T", () => this.tuning.toggle());
         this.events.once("shutdown", () => this.tuning.destroy());
         this.onPlayerAction = (OtherPlayerAction) => {
-            if (OtherPlayerAction.jump === true) {
+            /*if (OtherPlayerAction.jump === true) {
                 console.log("他プレイヤーからのアクション", OtherPlayerAction);
-            }
+            }*/
         };
         this.socket.on("playeraction", this.onPlayerAction);
 
@@ -453,7 +458,7 @@ export default class GameScene extends Phaser.Scene {
             ...this.pending,
         };
         this.pending = {};
-        this.socket.emit("gameaction", input);//１フレームごとに入力をサーバに送る
+        this.socket.emit("gameaction", {input : input, position : this.player.sprite.x});//１フレームごとに入力をサーバに送る
         this.player.tick(input, [this.dummy]);
         this.tickDummy();
         if (this.player.state === S.DEAD && !this.restarting) {

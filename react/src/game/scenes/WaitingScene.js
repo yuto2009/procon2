@@ -16,6 +16,8 @@ export default class WaitingScene extends Phaser.Scene {
             if(opponentName){
                 isReady = true;
         }    
+        const LastPosition = this.registry.get("LastPosition");
+            if("");
         this.add.text(400, 100, "MULTIPLAYER", {
             fontSize: "48px", color: "#ffffff", fontStyle: "bold"
         }).setOrigin(0.5);

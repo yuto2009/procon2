@@ -155,6 +155,12 @@ io.on("connection", (socket) => {
   socket.on("gameaction", (gameaction) => {
     const roomId = socket.data.roomId;
     if (!roomId) return;
+    sess.LastPosition = gameaction.position;
+    sess.save((err) => {
+        if(err){console.log("位置を取得できない")
+                return;
+                }
+    });
     socket.to(roomId).emit("playeraction", gameaction);
   });
   //本人が選んだ時だけ、復帰させる
@@ -167,12 +173,13 @@ io.on("connection", (socket) => {
     socket.join(roomId);
     socket.data.roomId = roomId;
     socket.data.name = name;
-
+    socket.data.name = sess.LastPosition;
+    const LastPosition = sess.LastPosition;
     const opponentName = Object.entries(info.members)
       .find(([uid]) => uid !== sess.user_id)?.[1] ?? null;
     const online = (io.sockets.adapter.rooms.get(roomId)?.size ?? 0) >= 2;
 
-    socket.emit("joined", { roomId, hostName: online ? opponentName : null, name });
+    socket.emit("joined", { roomId, hostName: online ? opponentName : null, name , LastPosition});
     socket.to(roomId).emit("joinroom", { name });
   });
   //セッションがあるときもう一回入る
