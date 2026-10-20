@@ -10,10 +10,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "3": "^2.1.0",
     "crypto": "^1.0.1",
+    "pather": "^0.0.12",
     "phaser": "^3.90.0",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "socket.io-client": "^4.8.4"
   },
   "devDependencies": {

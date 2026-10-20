@@ -399,11 +399,11 @@ export default class GameScene extends Phaser.Scene {
         this.tuning = createTuningPanel();
         this.input.keyboard.on("keydown-T", () => this.tuning.toggle());
         this.events.once("shutdown", () => this.tuning.destroy());
-        /*this.onPlayerAction = (OtherPlayerAction) => {
+        this.onPlayerAction = (OtherPlayerAction) => {
             if (OtherPlayerAction.jump === true) {
                 console.log("他プレイヤーからのアクション", OtherPlayerAction);
             }
-        };*/
+        };
         this.socket.on("playeraction", this.onPlayerAction);
 
         this.events.once("shutdown", () => {

@@ -9,6 +9,16 @@
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <script>
       window.socket = io("http://localhost:3001", { withCredentials: true });
+      const _on = socket.on.bind(socket);
+socket.on = (ev, fn) => {
+  if (typeof fn !== "function") console.error("undefined handler for", ev, new Error().stack);
+  return _on(ev, fn);
+};
+const _once = socket.once.bind(socket);
+socket.once = (ev, fn) => {
+  if (typeof fn !== "function") console.error("undefined handler for", ev, new Error().stack);
+  return _once(ev, fn);
+};
     </script>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>

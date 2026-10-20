@@ -58,17 +58,23 @@ export default class TitleScene extends Phaser.Scene {
                 .setOrigin(0.5).setInteractive();
             btn.on("pointerdown", () => this.socket.emit("rejoinSaved"));
         };
+
         this.onJoined = ({ roomId, hostName, name }) => {
+            if (!this.sys || !this.sys.isActive()) return;
             this.registry.set("playerName", name);
             this.registry.set("roomId", roomId);
             this.registry.set("opponentName", hostName ?? null);
             this.scene.start("WaitingScene");
         };
+        const cleanup = () => {
+            this.socket.off("joined", this.onJoined);
+            this.socket.off("savedRoom", this.onSavedRoom);
+        }
+        this.events.once("shutdown", cleanup);
+        this.events.once("destroy", cleanup);
         this.socket.once("joined", this.onJoined);
-        this.events.once("shutdown", () => this.socket.off("joined", this.onJoined));
         this.socket.on("savedRoom", this.onSavedRoom);
         this.socket.emit("getSavedRoom");
-        this.events.once("shutdown", () => this.socket.off("savedRoom", this.onSavedRoom));
         // 動作確認用(確認が終わったら消す)
         this.input.keyboard.once("keydown-G", () => this.scene.start("GameScene"));
     }
