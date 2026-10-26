@@ -168,9 +168,37 @@ export default class GameScene extends Phaser.Scene {
                 platformColor: 0x8b9a99,
             };
 
+        // マップ全体のサイズ
+
+        // ボスの門の位置
+        this.bossEntranceX = WORLD_WIDTH - CHUNK_WIDTH * 1.5;
+
+        // シーンの切り替えを一度だけ実行するためのフラグ
+        this.bossTransitioning = false;
+
+        // 物理演算用の高さは画面より大きくする
+        const PHYSICS_HEIGHT = WORLD_HEIGHT + 1200;
+
+        // 穴に落ちたと判定する高さ
+        this.deathY = WORLD_HEIGHT + 80;
+
         this.cameras.main.setBackgroundColor(world.background);
-        this.physics.world.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
-        this.cameras.main.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+
+        // 物理範囲は下へ広げる
+        this.physics.world.setBounds(
+            0,
+            0,
+            WORLD_WIDTH,
+            PHYSICS_HEIGHT
+        );
+
+        // カメラの表示範囲は今までどおりf
+        this.cameras.main.setBounds(
+            0,
+            0,
+            WORLD_WIDTH,
+            WORLD_HEIGHT
+        );
 
         // 生成した地形を保存する配列
         const terrain = [];
@@ -271,17 +299,44 @@ export default class GameScene extends Phaser.Scene {
             }
 
             // 浮遊足場を生成
+            // 浮遊足場を生成
             for (const p of template.platforms) {
+
+                // 足場がまたぐ範囲の地面の高さを取得
+                const rows = profile
+                    .slice(p.col, p.col + p.width)
+                    .filter((row) => row !== null);
+
+                // 足場の下に地面がある場合、一番高い地面を求める
+                const highestGroundY = rows.length > 0
+                    ? Math.min(...rows) * TILE_SIZE
+                    : null;
+
+                // テンプレートで指定された足場の高さ
+                let platformY = p.row * TILE_SIZE;
+
+                // 地面と重なる場合は、足場を上へ移動
+                if (highestGroundY !== null) {
+                    platformY = Math.min(
+                        platformY,
+                        highestGroundY - 32
+                    );
+                }
+
+                // 足場本体
                 const platform = this.add.rectangle(
                     chunkX + (p.col + p.width / 2) * TILE_SIZE,
-                    p.row * TILE_SIZE,
+                    platformY,
                     p.width * TILE_SIZE - 8,
                     18,
                     world.platformColor
                 );
 
                 platform.setStrokeStyle(2, 0x25232d);
+
+                // 足場の当たり判定
                 this.physics.add.existing(platform, true);
+
                 platforms.push(platform);
             }
 
@@ -334,6 +389,44 @@ export default class GameScene extends Phaser.Scene {
             }
         }
 
+
+        // =============================
+        // ボス部屋への門
+        // =============================
+
+        // 門の本体
+        const bossGate = this.add.rectangle(
+            this.bossEntranceX,
+            476,
+            64,
+            136,
+            0x21152f
+        );
+
+        bossGate.setStrokeStyle(5, 0xc7a5ff);
+
+        // 門の中央の封印
+        const bossSeal = this.add.circle(
+            this.bossEntranceX,
+            470,
+            25,
+            0x7138a8,
+            0.9
+        );
+
+        bossSeal.setStrokeStyle(3, 0xe8d4ff);
+
+        // 門の上に表示する文字
+        this.add.text(
+            this.bossEntranceX,
+            385,
+            "BOSS ROOM",
+            {
+                fontSize: "20px",
+                color: "#e8d4ff",
+                fontStyle: "bold"
+            }
+        ).setOrigin(0.5);
         // 世界名を表示
         this.add.text(400, 8, world.name, {
             fontSize: "18px",
@@ -350,12 +443,18 @@ export default class GameScene extends Phaser.Scene {
         // キャラ
         this.hitStop = 0;
         this.hitVictim = null;
+        this.gameOver = false;
         this.physics.world.resume();
-        if (LastPosition == null) {
-            this.player = new Fighter(this, 200, 500, { color: 0x66aaff, texture: "player" });
+        if (LastPosition === null || LastPosition === undefined) {
+            this.player = new Fighter(this, 200, 500, {
+                color: 0x66aaff,
+                texture: "player"
+            });
         } else {
-            console.log("restart", LastPosition);
-            this.player = new Fighter(this, LastPosition, 500, { color: 0x66aaff, texture: "player" });
+            this.player = new Fighter(this, LastPosition, 500, {
+                color: 0x66aaff,
+                texture: "player"
+            });
         }
         this.dummy = new Fighter(
             this,
@@ -367,14 +466,48 @@ export default class GameScene extends Phaser.Scene {
             }
         );
         for (const f of [this.player, this.dummy]) {
-            // すべての地面に衝突判定を設定
+            // 地面は通常の衝突判定
             for (const segment of terrain) {
                 this.physics.add.collider(f.sprite, segment);
             }
 
-            // すべての浮遊足場に衝突判定を設定
+            // 浮遊足場は上からのみ着地できる
             for (const platform of platforms) {
-                this.physics.add.collider(f.sprite, platform);
+                this.physics.add.collider(
+                    f.sprite,
+                    platform,
+                    undefined,
+                    (actor, platformObject) => {
+                        const body = actor.body;
+                        const platformBody = platformObject.body;
+
+                        if (!body || !platformBody) {
+                            return false;
+                        }
+
+                        // 物理更新前のキャラクターの足元
+                        const previousBottom =
+                            body.prev.y + body.height;
+
+                        // 足場の上端
+                        const platformTop = platformBody.top;
+
+                        // 下から上へ移動しているときは通過させる
+                        const isFallingOrStanding =
+                            body.velocity.y >= 0;
+
+                        // 前のフレームで足場より上にいたか
+                        const wasAbove =
+                            previousBottom <= platformTop + 4;
+
+                        return isFallingOrStanding && wasAbove;
+                    }
+                );
+            }
+
+            // 石柱は通常の衝突判定
+            for (const obstacle of obstacles) {
+                this.physics.add.collider(f.sprite, obstacle);
             }
         }
         this.cameras.main.startFollow(this.player.sprite, true, 0.1, 0.1);
@@ -437,6 +570,13 @@ export default class GameScene extends Phaser.Scene {
     }
 
     update(_, delta) {
+
+        if (this.gameOver) {
+            this.player.render();
+            this.dummy.render();
+            this.drawHud();
+            return;
+        }
         this.readKeys();
         this.acc += Math.min(delta, 100);
         while (this.acc >= STEP) {
@@ -445,9 +585,12 @@ export default class GameScene extends Phaser.Scene {
         }
 
         // ヒットストップ中は物理も止める
-        if (this.hitStop > 0) this.physics.world.pause();
-        else this.physics.world.resume();
-
+        if (this.hitStop > 0 || this.gameOver) {
+            this.physics.world.pause();
+        }
+        else {
+            this.physics.world.resume();
+        }
         this.player.render();
         this.dummy.render();
 
@@ -458,29 +601,44 @@ export default class GameScene extends Phaser.Scene {
         this.drawHud();
     }
     // 1/60秒ごとの更新(サーバー同期/ゴースト記録もここに集約できる)
-    tick() {
-        if (this.hitStop > 0) { this.hitStop--; return; }
-        const k = this.keys;
-        const input = {
-            x: (k.D.isDown || k.RIGHT.isDown ? 1 : 0) - (k.A.isDown || k.LEFT.isDown ? 1 : 0),
-            jump: false, sword: false, fist: false, parry: false, dodge: false,
-            ...this.pending,
-        };
-        this.pending = {};
-        this.socket.emit("gameaction", { input: input, position: this.player.sprite.x });//１フレームごとに入力をサーバに送る
-        this.player.tick(input, [this.dummy]);
-        this.tickDummy();
-        if (!this.stage.cleared && this.player.state !== S.DEAD
-            && this.player.sprite.x >= this.worldWidth - 200) {
-            this.stage.cleared = true;
-            this.socket.emit("stageClear");
-        }
-        if (this.player.state === S.DEAD && !this.restarting) {
-            this.restarting = true;
-            this.time.delayedCall(1000, () => this.scene.restart());
-        }
+   tick() {
+    if (this.hitStop > 0) { this.hitStop--; return; }
+    const k = this.keys;
+    const input = {
+        x: (k.D.isDown || k.RIGHT.isDown ? 1 : 0) - (k.A.isDown || k.LEFT.isDown ? 1 : 0),
+        jump: false, sword: false, fist: false, parry: false, dodge: false,
+        ...this.pending,
+    };
+    this.pending = {};
+    this.socket.emit("gameaction", { input, position: this.player.sprite.x });
+    this.player.tick(input, [this.dummy]);
+    this.tickDummy();
+
+    if (!this.stage.cleared && this.player.state !== S.DEAD
+        && this.player.sprite.x >= this.worldWidth - 200) {
+        this.stage.cleared = true;
+        this.socket.emit("stageClear");
     }
 
+    // ボス部屋への到達判定
+    if (!this.bossTransitioning && this.player.sprite.x >= this.bossEntranceX) {
+        this.bossTransitioning = true;
+        this.registry.set("LastPosition", this.bossEntranceX - 200);
+        this.player.sprite.body.setVelocity(0, 0);
+        this.scene.start("BossScene");
+        return;
+    }
+
+    if (this.player.state === S.DEAD) {
+        this.triggerGameOver("力尽きてしまった");
+        return;
+    }
+    if (this.player.sprite.y > this.deathY) {
+        this.triggerGameOver("穴に落ちてしまった");
+        return;
+    }
+}
+    
     // 練習用ダミー: 一定間隔で予備動作つきの攻撃をしてくる(パリィ練習用)
     tickDummy() {
         const d = this.dummy;
@@ -493,6 +651,147 @@ export default class GameScene extends Phaser.Scene {
             if (++this.dummyTimer > 100) { d.startAttack("enemySlash"); this.dummyTimer = 0; }
         }
         d.tick({ x: 0 }, [this.player]);
+    }
+
+    triggerGameOver(message) {
+        // 二重に実行しない
+        if (this.gameOver) return;
+
+        this.gameOver = true;
+        this.hitStop = 0;
+        this.pending = {};
+
+        // キャラクターの動きを止める
+        this.player.body.setVelocity(0, 0);
+        this.dummy.body.setVelocity(0, 0);
+
+        // 物理演算を停止
+        this.physics.world.pause();
+
+        // 画面を暗くするオーバーレイ
+        const overlay = this.add.rectangle(
+            400, 300,
+            800, 600,
+            0x000000,
+            0.78
+        )
+            .setScrollFactor(0)
+            .setDepth(100)
+            .setAlpha(0);
+
+        // GAME OVER のタイトル
+        const title = this.add.text(
+            400, 210,
+            "GAME OVER",
+            {
+                fontSize: "54px",
+                color: "#ff5555",
+                fontStyle: "bold"
+            }
+        )
+            .setOrigin(0.5)
+            .setScrollFactor(0)
+            .setDepth(101)
+            .setAlpha(0)
+            .setScale(0.7);
+
+        // ゲームオーバーの理由
+        const detail = this.add.text(
+            400, 275,
+            message,
+            {
+                fontSize: "22px",
+                color: "#ffffff"
+            }
+        )
+            .setOrigin(0.5)
+            .setScrollFactor(0)
+            .setDepth(101)
+            .setAlpha(0);
+
+        // ボタンを作る共通関数
+        const createButton = (y, label, onClick) => {
+            const button = this.add.text(
+                400, y,
+                label,
+                {
+                    fontSize: "22px",
+                    color: "#ffffff",
+                    backgroundColor: "#444444",
+                    padding: {
+                        left: 24,
+                        right: 24,
+                        top: 12,
+                        bottom: 12
+                    }
+                }
+            )
+                .setOrigin(0.5)
+                .setScrollFactor(0)
+                .setDepth(102)
+                .setAlpha(0)
+                .setInteractive({ useHandCursor: true });
+
+            button.on("pointerover", () => {
+                button.setStyle({
+                    backgroundColor: "#666666"
+                });
+            });
+
+            button.on("pointerout", () => {
+                button.setStyle({
+                    backgroundColor: "#444444"
+                });
+            });
+
+            button.on("pointerdown", onClick);
+
+            return button;
+        };
+
+        // リトライボタン
+        const retryButton = createButton(
+            365,
+            "もう一度プレイ",
+            () => {
+                // 保存されている位置をリセットして最初から開始
+                this.registry.set("LastPosition", null);
+                this.scene.restart();
+            }
+        );
+
+        // タイトルへ戻るボタン
+        const titleButton = createButton(
+            435,
+            "タイトルへ戻る",
+            () => {
+                this.registry.set("LastPosition", null);
+                this.scene.start("TitleScene");
+            }
+        );
+
+        // 背景を暗くし、タイトルとボタンを表示する
+        this.tweens.add({
+            targets: overlay,
+            alpha: 1,
+            duration: 450,
+            ease: "Sine.Out"
+        });
+
+        this.tweens.add({
+            targets: title,
+            alpha: 1,
+            scale: 1,
+            duration: 550,
+            ease: "Back.Out"
+        });
+
+        this.tweens.add({
+            targets: [detail, retryButton, titleButton],
+            alpha: 1,
+            duration: 400,
+            delay: 150
+        });
     }
 
     drawHud() {
