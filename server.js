@@ -23,6 +23,9 @@ const io = new Server(server, {
 });
 io.engine.use(sessionMiddleware);
 
+// クライアントの MAP_TEMPLATES の数と合わせる
+const TEMPLATE_COUNT = 6;
+
 // 1〜9の数字を4つ並べたルームID
 function createRoomId() {
   let id;
@@ -34,7 +37,10 @@ function createRoomId() {
   } while (io.sockets.adapter.rooms.has(id) || rooms.has(id));
   return id;
 }
+
+// rooms: roomId -> { members: { userId: name }, players: { userId: stage } }
 const rooms = new Map();
+
 io.on("connection", (socket) => {
   const sess = socket.request.session;
   //user_idを登録
@@ -72,7 +78,10 @@ io.on("connection", (socket) => {
         socket.data.name = name;
         socket.join(roomId);
         socket.data.roomId = roomId;
-        rooms.set(roomId, { members: { [sess.user_id]: name } });
+        rooms.set(roomId, {
+          members: { [sess.user_id]: name },
+          players: {},   // ステージ・クリア状況(userId ごと)
+        });
         sess.roomId = roomId;
         sess.save();
         console.log(`ルーム ${roomId} を作成しました(${name})`);
@@ -126,6 +135,7 @@ io.on("connection", (socket) => {
     const info = rooms.get(roomId);
     if (info) {
       delete info.members[sess.user_id];
+      delete info.players?.[sess.user_id];
       if (Object.keys(info.members).length === 0) rooms.delete(roomId);
     }
     sess.roomId = null;
@@ -138,6 +148,11 @@ io.on("connection", (socket) => {
         socket.to(roomId).emit("playerLeft");
       }
     }
+    // 最後の位置をセッションに保存する
+    if (socket.data.LastPosition != null) {
+      sess.LastPosition = socket.data.LastPosition;
+      sess.save();
+    }
   });
   //ゲームをスタート
   socket.on("startGame", () => {
@@ -149,18 +164,64 @@ io.on("connection", (socket) => {
     if (!room || room.size < 2) {
       return socket.emit("not member");
     }
+    // 新しい対戦なので、前のステージ・クリア状況を消す
+    const info = rooms.get(roomId);
+    if (info) {
+      for (const [uid, stage] of Object.entries(info.players ?? {})) {
+        if (stage.cleared) delete info.players[uid];
+      }
+    }
     io.to(roomId).emit("startGame");
   });
+
+  // ゲーム側で作ったステージを保存する(保存済みなら上書きしない)
+  socket.on("saveStage", (stage) => {
+    const info = rooms.get(socket.data.roomId);
+    if (!info) return;
+    info.players ??= {};
+    if (info.players[sess.user_id]) return;
+
+    // 最低限の検証(巨大な値や不正な番号を弾く)
+    const ok =
+      Array.isArray(stage?.chunks) &&
+      stage.chunks.length <= 200 &&
+      stage.chunks.every(
+        (n) => Number.isInteger(n) && n >= 0 && n < TEMPLATE_COUNT
+      );
+    if (!ok) return;
+
+    info.players[sess.user_id] = {
+      worldId: stage.worldId === "B" ? "B" : "A",
+      chunks: stage.chunks,
+      dummyX: Number(stage.dummyX) || 700,
+      cleared: false,
+      clearedAt: null,
+    };
+  });
+
+  // ゲーム側で判定したクリアを記録する
+  socket.on("stageClear", () => {
+    const stage = rooms.get(socket.data.roomId)?.players?.[sess.user_id];
+    if (!stage || stage.cleared) return;
+    stage.cleared = true;
+    stage.clearedAt = Date.now();
+    socket.emit("stageCleared");
+  });
+
   //プレイヤーの行動処理
   socket.on("gameaction", (gameaction) => {
     const roomId = socket.data.roomId;
     if (!roomId) return;
-    sess.LastPosition = gameaction.position;
-    sess.save((err) => {
-        if(err){console.log("位置を取得できない")
-                return;
-                }
-    });
+    // 毎フレームのセッション保存は重いので、位置はsocket.dataに持ち、1秒ごとにだけ保存する
+    socket.data.LastPosition = gameaction.position;
+    const now = Date.now();
+    if (!socket.data.lastSavedAt || now - socket.data.lastSavedAt > 1000) {
+      socket.data.lastSavedAt = now;
+      sess.LastPosition = gameaction.position;
+      sess.save((err) => {
+        if (err) console.log("位置を保存できない", err);
+      });
+    }
     socket.to(roomId).emit("playeraction", gameaction);
   });
   //本人が選んだ時だけ、復帰させる
@@ -173,13 +234,20 @@ io.on("connection", (socket) => {
     socket.join(roomId);
     socket.data.roomId = roomId;
     socket.data.name = name;
-    socket.data.name = sess.LastPosition;
+    socket.data.LastPosition = sess.LastPosition;
     const LastPosition = sess.LastPosition;
+    const stage = info.players?.[sess.user_id] ?? null;   // 保存済みのステージ
     const opponentName = Object.entries(info.members)
       .find(([uid]) => uid !== sess.user_id)?.[1] ?? null;
     const online = (io.sockets.adapter.rooms.get(roomId)?.size ?? 0) >= 2;
 
-    socket.emit("joined", { roomId, hostName: online ? opponentName : null, name , LastPosition});
+    socket.emit("joined", {
+      roomId,
+      hostName: online ? opponentName : null,
+      name,
+      LastPosition,
+      stage,
+    });
     socket.to(roomId).emit("joinroom", { name });
   });
   //セッションがあるときもう一回入る

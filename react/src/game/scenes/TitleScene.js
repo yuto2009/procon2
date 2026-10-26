@@ -59,12 +59,13 @@ export default class TitleScene extends Phaser.Scene {
             btn.on("pointerdown", () => this.socket.emit("rejoinSaved"));
         };
 
-        this.onJoined = ({ roomId, hostName, name, LastPosition }) => {
+        this.onJoined = ({ roomId, hostName, name, LastPosition, stage }) => {
             if (!this.sys || !this.sys.isActive()) return;
             this.registry.set("playerName", name);
             this.registry.set("roomId", roomId);
             this.registry.set("opponentName", hostName ?? null);
             this.registry.set("LastPosition",LastPosition ?? null);
+            this.registry.set("stage", stage ?? null);
             this.scene.start("WaitingScene");
         };
         const cleanup = () => {

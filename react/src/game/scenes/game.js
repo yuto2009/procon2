@@ -125,29 +125,48 @@ export default class GameScene extends Phaser.Scene {
     create() {
         const myName = this.registry.get("playerName") ?? "PLAYER";
         const LastPosition = this.registry.get("LastPosition");
-        // 世界ごとの色
-        const worldId = this.registry.get("worldId") ?? "A";
 
-        const world = worldId === "B"
+        // マップ全体のサイズ
+        const TOTAL_CHUNKS = 103;
+        const WORLD_WIDTH = CHUNK_WIDTH * TOTAL_CHUNKS;
+        const WORLD_HEIGHT = 600;
+
+        // ランダムな整数を返す(使う前に定義する)
+        const randomInt = (min, max) =>
+            Math.floor(Math.random() * (max - min + 1)) + min;
+
+        // 復帰時はサーバーから受け取った stage が registry に入っている
+        let stage = this.registry.get("stage");
+        if (!stage) {
+            const worldId = this.registry.get("worldId") ?? "A";
+            stage = {
+                worldId,
+                chunks: Array.from({ length: TOTAL_CHUNKS }, (_, i) =>
+                    i < 2 || i >= TOTAL_CHUNKS - 2 ? 0 : randomInt(1, MAP_TEMPLATES.length - 1)
+                ),
+                dummyX: worldId === "B" ? 1200 : 700,
+                cleared: false,
+            };
+            this.registry.set("stage", stage);
+            this.socket.emit("saveStage", stage);
+        }
+        this.stage = stage;
+        this.worldWidth = WORLD_WIDTH;
+
+        // 世界ごとの色(stage.worldId で決める)
+        const world = stage.worldId === "B"
             ? {
                 name: "WORLD B - RUINS",
                 background: "#211b31",
                 groundColor: 0x51475f,
                 platformColor: 0x81749a,
-                dummyX: 1200
             }
             : {
                 name: "WORLD A - DUNGEON",
                 background: "#171e27",
                 groundColor: 0x4d5862,
                 platformColor: 0x8b9a99,
-                dummyX: 700
             };
-
-        // マップ全体のサイズ
-        const TOTAL_CHUNKS = 103;
-        const WORLD_WIDTH = CHUNK_WIDTH * TOTAL_CHUNKS;
-        const WORLD_HEIGHT = 600;
 
         this.cameras.main.setBackgroundColor(world.background);
         this.physics.world.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
@@ -157,25 +176,15 @@ export default class GameScene extends Phaser.Scene {
         const terrain = [];
         const platforms = [];
         const obstacles = [];
-
-        // ランダムな整数を返す
-        const randomInt = (min, max) =>
-            Math.floor(Math.random() * (max - min + 1)) + min;
-
         // チャンクを左から順番に配置
         for (let i = 0; i < TOTAL_CHUNKS; i++) {
             const chunkX = i * CHUNK_WIDTH;
+            const template = MAP_TEMPLATES[stage.chunks[i]];   // ← ここを置き換え
+            const profile = template.profile;
 
             // 最初の2区間と最後の2区間は平坦にする
             // スタート位置とゴール付近を安定させるため
-            const template =
-                i < 2 || i >= TOTAL_CHUNKS - 2
-                    ? MAP_TEMPLATES[0]
-                    : MAP_TEMPLATES[
-                    randomInt(1, MAP_TEMPLATES.length - 1)
-                    ];
 
-            const profile = template.profile;
 
             // 地面を同じ高さごとにまとめて生成
             let col = 0;
@@ -336,17 +345,17 @@ export default class GameScene extends Phaser.Scene {
             .setDepth(10);
 
         // ダミーの出現位置
-        this.dummySpawnX = world.dummyX;
+        this.dummySpawnX = stage.dummyX;
 
         // キャラ
         this.hitStop = 0;
         this.hitVictim = null;
         this.physics.world.resume();
-        if(LastPosition === null){
-        this.player = new Fighter(this, 200, 500, { color: 0x66aaff, texture: "player" });
-        }else{
-            console.log("restart",LastPosition);
-            this.player = new Fighter(this, LastPosition, 500,{ color: 0x66aaff, texture:"player"});
+        if (LastPosition == null) {
+            this.player = new Fighter(this, 200, 500, { color: 0x66aaff, texture: "player" });
+        } else {
+            console.log("restart", LastPosition);
+            this.player = new Fighter(this, LastPosition, 500, { color: 0x66aaff, texture: "player" });
         }
         this.dummy = new Fighter(
             this,
@@ -458,9 +467,14 @@ export default class GameScene extends Phaser.Scene {
             ...this.pending,
         };
         this.pending = {};
-        this.socket.emit("gameaction", {input : input, position : this.player.sprite.x});//１フレームごとに入力をサーバに送る
+        this.socket.emit("gameaction", { input: input, position: this.player.sprite.x });//１フレームごとに入力をサーバに送る
         this.player.tick(input, [this.dummy]);
         this.tickDummy();
+        if (!this.stage.cleared && this.player.state !== S.DEAD
+            && this.player.sprite.x >= this.worldWidth - 200) {
+            this.stage.cleared = true;
+            this.socket.emit("stageClear");
+        }
         if (this.player.state === S.DEAD && !this.restarting) {
             this.restarting = true;
             this.time.delayedCall(1000, () => this.scene.restart());

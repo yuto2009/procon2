@@ -9,15 +9,15 @@ export default class WaitingScene extends Phaser.Scene {
     create() {
         this.cameras.main.setBackgroundColor("#222222");
         let isReady = false;
-    
+
         const myName = this.registry.get("playerName");
         const roomId = this.registry.get("roomId");
         const opponentName = this.registry.get("opponentName");
-            if(opponentName){
-                isReady = true;
-        }    
+        if (opponentName) {
+            isReady = true;
+        }
         const LastPosition = this.registry.get("LastPosition");
-            if("");
+        if ("");
         this.add.text(400, 100, "MULTIPLAYER", {
             fontSize: "48px", color: "#ffffff", fontStyle: "bold"
         }).setOrigin(0.5);
@@ -27,7 +27,7 @@ export default class WaitingScene extends Phaser.Scene {
             fontSize: "28px", color: "#ffff66"
         }).setOrigin(0.5);
 
-        const waitingText = this.add.text(400, 230,opponentName ? "準備完了" : "プレイヤーを待っています...", {
+        const waitingText = this.add.text(400, 230, opponentName ? "準備完了" : "プレイヤーを待っています...", {
             fontSize: "24px", color: opponentName ? "#66ff66" : "#ffffff"
         }).setOrigin(0.5);
         const setReady = () => {
@@ -35,7 +35,7 @@ export default class WaitingScene extends Phaser.Scene {
             waitingText.setColor("#66ff66");
             isReady = true;
         };
-        const setWaiting = () =>{
+        const setWaiting = () => {
             waitingText.setText("プレイヤーを待っています...");
             waitingText.setColor("#ffffff");
         };
@@ -80,25 +80,32 @@ export default class WaitingScene extends Phaser.Scene {
             this.registry.set("roomId", null);
             this.registry.set("opponentName", null);
             this.registry.set("playerName", null);
+            this.registry.set("stage", null);
+            this.registry.set("LastPosition", null);
             this.scene.start("TitleScene");
         });
         // ゲーム開始ボタン
-        const startButton = this.add.dom(400, 450, "button",{
+        const startButton = this.add.dom(400, 450, "button", {
             width: "200px", height: "40px", fontSize: "20px", backgroundColor: "#444444", color: "#ffffff"
         }, "ゲームを開始");
-         const onStartGame = () => {
-                console.log("gamestart");
-                this.scene.start("GameScene");
-        } 
+        const onStartGame = () => {
+            console.log("gamestart");
+            const stage = this.registry.get("stage");
+            if (stage?.cleared) {
+                this.registry.set("stage", null);
+                this.registry.set("LastPosition", null);
+            }
+            this.scene.start("GameScene");
+        }
         startButton.node.addEventListener("click", () => {
-            if(isReady == false){
+            if (isReady == false) {
                 alert("準備ができていません");
                 return;
             }
             socket.emit("startGame");
         });
-       
-        socket.on("startGame",onStartGame);
+
+        socket.on("startGame", onStartGame);
         socket.on("playerLeft", onPlayerLeft);
         socket.on("writingscene", onWritingScene);
         socket.on("joinroom", onJoinRoom);
