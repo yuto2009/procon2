@@ -1,6 +1,7 @@
 import Phaser from "phaser";
-import Fighter from "../combat/Fighter";
-import { FPS } from "../combat/frameData";
+import Fighter, { S } from "../combat/Fighter";
+import BossEnemy from "../combat/BossEnemy";
+import { FPS, STAMINA, FX } from "../combat/frameData";
 
 const STEP = 1000 / FPS;
 
@@ -9,33 +10,124 @@ export default class BossScene extends Phaser.Scene {
         super("BossScene");
     }
 
+    // ボスのHPバーを更新
+    updateBossHpBar() {
+        const g = this.bossHpGraphics;
+        const hp = this.boss.hp;
+        const maxHp = this.boss.maxHp;
+
+        g.clear();
+
+        const ratio = Phaser.Math.Clamp(hp / maxHp, 0, 1);
+
+        // バーの背景
+        g.fillStyle(0x241522, 1);
+        g.fillRoundedRect(
+            this.bossHpBarX,
+            this.bossHpBarY,
+            this.bossHpBarWidth,
+            this.bossHpBarHeight,
+            6
+        );
+
+        // 残りHP（残量に応じて色を変更）
+        const color =
+            ratio > 0.5 ? 0xe83e65 :
+                ratio > 0.25 ? 0xffa52f :
+                    0xff3333;
+
+        if (ratio > 0) {
+            g.fillStyle(color, 1);
+            g.fillRoundedRect(
+                this.bossHpBarX + 2,
+                this.bossHpBarY + 2,
+                (this.bossHpBarWidth - 4) * ratio,
+                this.bossHpBarHeight - 4,
+                4
+            );
+        }
+
+        // 外枠
+        g.lineStyle(2, 0xc7a5ff, 1);
+        g.strokeRoundedRect(
+            this.bossHpBarX,
+            this.bossHpBarY,
+            this.bossHpBarWidth,
+            this.bossHpBarHeight,
+            6
+        );
+
+        this.bossHpText.setText(`${hp} / ${maxHp}`);
+    }
+
+    // プレイヤーのHPとスタミナを更新
+    drawPlayerHud() {
+        const g = this.playerHud;
+        g.clear();
+
+        const bar = (x, y, w, h, ratio, color) => {
+            g.fillStyle(0x000000, 0.6).fillRect(x, y, w, h);
+            g.fillStyle(color).fillRect(
+                x + 2,
+                y + 2,
+                (w - 4) * Math.max(0, ratio),
+                h - 4
+            );
+        };
+
+        bar(20, 560, 220, 18, this.player.hp / this.player.maxHp, 0x44cc66);
+        bar(20, 582, 220, 12, this.player.stamina / STAMINA.max, 0xffcc33);
+    }
+
+    popText(x, y, msg) {
+        const t = this.add
+            .text(x, y, msg, {
+                fontSize: "24px",
+                color: "#66ffff",
+                fontStyle: "bold"
+            })
+            .setOrigin(0.5)
+            .setDepth(40);
+
+        this.tweens.add({
+            targets: t,
+            y: y - 40,
+            alpha: 0,
+            duration: 600,
+            onComplete: () => t.destroy()
+        });
+    }
+
     preload() {
         this.load.spritesheet(
             "player",
             "/assets/player.png",
             { frameWidth: 96, frameHeight: 32 }
         );
-
-        this.load.spritesheet(
-            "enemy",
-            "/assets/enemy.png",
-            { frameWidth: 96, frameHeight: 32 }
-        );
+        this.load.image("boss", "/assets/bossenemy1.png");
     }
 
     create() {
-        // ボス部屋のサイズ
-        const ROOM_WIDTH = 2400;
+        // 背景や床を描く部屋全体の幅
+        const ROOM_WIDTH = 1800;
         const ROOM_HEIGHT = 600;
+
+        // ボスを中心にした遊べる範囲(アリーナ)。
+        // 画面の幅(800)とほぼ同じ広さで、カメラはほとんど動かない
+        const BOSS_X = 900;
+        const ARENA_LEFT = BOSS_X - 400;    // 500
+        const ARENA_RIGHT = BOSS_X + 400;   // 1300
+        const ARENA_WIDTH = ARENA_RIGHT - ARENA_LEFT;
 
         this.cameras.main.setBackgroundColor("#17101e");
 
+        // プレイヤーはアリーナの外へ出られない
         this.physics.world.setBounds(
-            0, 0, ROOM_WIDTH, ROOM_HEIGHT
+            ARENA_LEFT, 0, ARENA_WIDTH, ROOM_HEIGHT
         );
 
         this.cameras.main.setBounds(
-            0, 0, ROOM_WIDTH, ROOM_HEIGHT
+            ARENA_LEFT, 0, ARENA_WIDTH, ROOM_HEIGHT
         );
 
         this.physics.world.resume();
@@ -74,6 +166,20 @@ export default class BossScene extends Phaser.Scene {
             0xc7a5ff
         ).setDepth(-1);
 
+        // アリーナの左右の端の柱
+        for (const edgeX of [ARENA_LEFT, ARENA_RIGHT]) {
+            const pillar = this.add.rectangle(
+                edgeX,
+                300,
+                24,
+                520,
+                0x594365
+            );
+
+            pillar.setStrokeStyle(3, 0xc7a5ff);
+            pillar.setDepth(-1);
+        }
+
         // =============================
         // 床
         // =============================
@@ -91,14 +197,16 @@ export default class BossScene extends Phaser.Scene {
         this.physics.add.existing(ground, true);
 
         // =============================
-        // 浮遊足場
+        // 浮遊足場(4つ。ボスを中心に左右対称。上段は下段の真上)
         // =============================
 
         const platforms = [];
 
         const platformData = [
-            { x: 850, y: 455, width: 220 },
-            { x: 1350, y: 410, width: 260 }
+            { x: BOSS_X - 240, y: 480, width: 180 },   // 左の下段
+            { x: BOSS_X - 240, y: 380, width: 180 },   // 左の上段(下段の真上)
+            { x: BOSS_X + 240, y: 480, width: 180 },   // 右の下段
+            { x: BOSS_X + 240, y: 380, width: 180 }    // 右の上段(下段の真上)
         ];
 
         for (const p of platformData) {
@@ -118,63 +226,59 @@ export default class BossScene extends Phaser.Scene {
         }
 
         // =============================
-        // ボスの封印：仮の見た目
+        // ボス：アリーナ中央に配置(床の上端は y=560)
         // =============================
 
-        this.add.circle(
-            1900, 420,
-            95,
-            0x702b59,
-            0.28
-        );
+        this.boss = new BossEnemy(this, BOSS_X, 560, {
+            texture: "boss",
+            maxHp: 1000
+        });
 
-        const seal = this.add.circle(
-            1900, 420,
-            72,
-            0x35182f,
-            0.9
-        );
+        // HPバーの表示位置（画面固定）
+        this.bossHpBarX = 200;
+        this.bossHpBarY = 82;
+        this.bossHpBarWidth = 400;
+        this.bossHpBarHeight = 16;
 
-        seal.setStrokeStyle(6, 0xd45e8a);
+        // HPバーを描画するGraphics
+        this.bossHpGraphics = this.add.graphics()
+            .setScrollFactor(0)
+            .setDepth(25);
 
-        // 仮のボスのシルエット
-        this.add.circle(
-            1900, 375,
-            35,
-            0x211522
-        );
-
-        this.add.rectangle(
-            1900, 445,
-            76, 100,
-            0x211522
-        );
-
-        this.add.text(
-            1900, 300,
-            "BOSS",
+        // ボスHPのテキスト
+        this.bossHpText = this.add.text(
+            400,
+            103,
+            "",
             {
-                fontSize: "36px",
+                fontSize: "14px",
+                color: "#ffffff",
+                fontStyle: "bold"
+            }
+        )
+            .setOrigin(0.5, 0)
+            .setScrollFactor(0)
+            .setDepth(25);
+
+        // ボス名
+        this.add.text(
+            BOSS_X,
+            220,
+            "BOSS1",
+            {
+                fontSize: "28px",
                 color: "#ff7799",
                 fontStyle: "bold"
             }
-        ).setOrigin(0.5);
-
-        this.add.text(
-            1900, 520,
-            "SEALED",
-            {
-                fontSize: "18px",
-                color: "#e8d4ff"
-            }
-        ).setOrigin(0.5);
+        ).setOrigin(0.5).setDepth(6);
 
         // =============================
-        // 2人分の開始位置を用意
+        // 2人分の開始位置(ボスを挟んで左右)
         // =============================
 
-        const spawn1X = 420;
-        const spawn2X = 620;
+        // 下段の足場の外側(足場の真下に出ないように)
+        const spawn1X = BOSS_X - 345;
+        const spawn2X = BOSS_X + 345;
 
         // 位置の目印
         this.add.circle(
@@ -186,7 +290,7 @@ export default class BossScene extends Phaser.Scene {
         );
 
         this.add.text(
-            spawn1X, 485,
+            spawn1X, 530,
             "PLAYER 1",
             {
                 fontSize: "16px",
@@ -195,7 +299,7 @@ export default class BossScene extends Phaser.Scene {
         ).setOrigin(0.5);
 
         this.add.text(
-            spawn2X, 485,
+            spawn2X, 530,
             "PLAYER 2",
             {
                 fontSize: "16px",
@@ -252,13 +356,15 @@ export default class BossScene extends Phaser.Scene {
             );
         }
 
-        // カメラ
+        // カメラ:ボスを中心に始まり、そのあとは自分を追う
+        // (範囲はアリーナの内側に制限されているので、ボスは常に近くに見える)
         this.cameras.main.startFollow(
             this.player.sprite,
             true,
             0.1,
             0.1
         );
+        this.cameras.main.centerOn(BOSS_X, 300);
 
         // 画面に固定するタイトル
         this.add.text(
@@ -323,6 +429,31 @@ export default class BossScene extends Phaser.Scene {
             this.scene.start("GameScene");
         });
 
+        // プレイヤーのHUD
+        this.playerHud = this.add.graphics()
+            .setScrollFactor(0)
+            .setDepth(25);
+
+        // パリィ・被弾の演出
+        const onParry = (f) => {
+            this.popText(f.sprite.x, f.sprite.y - 50, "PARRY!");
+            this.cameras.main.shake(100, FX.parryShake);
+        };
+        const onHit = (victim, attacker, atk) => {
+            this.cameras.main.shake(100, atk.shake ?? 0);
+        };
+        const onBossDead = () => {
+            console.log("ボスを撃破しました！");
+        };
+        this.events.on("parry", onParry);
+        this.events.on("hit", onHit);
+        this.events.on("bossdead", onBossDead);
+        this.events.once("shutdown", () => {
+            this.events.off("parry", onParry);
+            this.events.off("hit", onHit);
+            this.events.off("bossdead", onBossDead);
+        });
+
         // 入力
         this.keys = this.input.keyboard.addKeys(
             "A,D,W,LEFT,RIGHT,UP,SPACE,J,K,L,SHIFT"
@@ -330,6 +461,7 @@ export default class BossScene extends Phaser.Scene {
 
         this.pending = {};
         this.acc = 0;
+        this.restarting = false;
     }
 
     readKeys() {
@@ -357,6 +489,9 @@ export default class BossScene extends Phaser.Scene {
         }
 
         this.player.render();
+        this.boss.render();
+        this.updateBossHpBar();
+        this.drawPlayerHud();
     }
 
     tick() {
@@ -378,7 +513,16 @@ export default class BossScene extends Phaser.Scene {
 
         this.pending = {};
 
-        // 今はボスが未実装なので、プレイヤーだけを更新
-        this.player.tick(input, []);
+        // プレイヤーの攻撃はボスに当たる
+        this.player.tick(input, [this.boss]);
+
+        // ボスの動き(2人対戦では、ここをホストだけが実行する形にする予定)
+        this.boss.tick([this.player]);
+
+        // プレイヤーが倒れたら、少し待ってからやり直す
+        if (this.player.state === S.DEAD && !this.restarting) {
+            this.restarting = true;
+            this.time.delayedCall(1500, () => this.scene.restart());
+        }
     }
 }

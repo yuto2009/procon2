@@ -5,8 +5,10 @@ const session = require("express-session");
 const crypto = require("crypto");
 const app = express();
 app.use(express.json());
+// 別ファイル読み込み
+const { rooms, getOpponentName } = require("./rooms");
+const Boss = require("./Boss");
 const server = http.createServer(app);
-
 const sessionMiddleware = session({
   secret: "secret-key",        // 本番では長い文字列を環境変数から読む
   resave: false,
@@ -39,7 +41,6 @@ function createRoomId() {
 }
 
 // rooms: roomId -> { members: { userId: name }, players: { userId: stage } }
-const rooms = new Map();
 
 io.on("connection", (socket) => {
   const sess = socket.request.session;
@@ -61,6 +62,7 @@ io.on("connection", (socket) => {
     sess.save();
   }
   console.log("クライアントが接続", sess.user_id);
+  Boss(io, socket, sess);
   // ルームを作る(ホスト)
   socket.on("setName", (name) => {
     name = String(name).trim().slice(0, 12);

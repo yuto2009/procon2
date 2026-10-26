@@ -78,6 +78,7 @@ export default class TitleScene extends Phaser.Scene {
         this.socket.on("savedRoom", this.onSavedRoom);
         this.socket.emit("getSavedRoom");
         // 動作確認用(確認が終わったら消す)
+        this.input.keyboard.once("keydown-B", () => this.scene.start("BossScene"));
         this.input.keyboard.once("keydown-G", () => this.scene.start("GameScene"));
     }
 }

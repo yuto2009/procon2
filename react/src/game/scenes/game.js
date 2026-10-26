@@ -444,18 +444,33 @@ export default class GameScene extends Phaser.Scene {
         this.hitStop = 0;
         this.hitVictim = null;
         this.gameOver = false;
-        this.physics.world.resume();
-        if (LastPosition === null || LastPosition === undefined) {
-            this.player = new Fighter(this, 200, 500, {
-                color: 0x66aaff,
-                texture: "player"
-            });
-        } else {
-            this.player = new Fighter(this, LastPosition, 500, {
-                color: 0x66aaff,
-                texture: "player"
-            });
+        // 指定したx座標の地面の上端(y)を返す。穴ならnull
+        const groundYAt = (x) => {
+            const chunk = Math.floor(x / CHUNK_WIDTH);
+            const template = MAP_TEMPLATES[stage.chunks[chunk]];
+            if (!template) return null;
+            const col = Math.floor((x - chunk * CHUNK_WIDTH) / TILE_SIZE);
+            const row = template.profile[col];
+            return row == null ? null : row * TILE_SIZE;
+        };
+
+        // 穴の上なら、左へ進んで最初の地面に合わせる
+        const findSafeX = (x) => {
+            x = Phaser.Math.Clamp(x, 100, WORLD_WIDTH - 100);
+            while (x > 100 && groundYAt(x) === null) x -= TILE_SIZE;
+            return x;
+        };
+
+        let spawnX = 200;
+        let spawnY = 500;
+        if (LastPosition != null) {
+            spawnX = findSafeX(LastPosition);
+            spawnY = (groundYAt(spawnX) ?? 544) - 60;   // 地面の少し上から落とす
         }
+        this.player = new Fighter(this, spawnX, spawnY, {
+            color: 0x66aaff,
+            texture: "player"
+        });
         this.dummy = new Fighter(
             this,
             this.dummySpawnX,
@@ -601,44 +616,44 @@ export default class GameScene extends Phaser.Scene {
         this.drawHud();
     }
     // 1/60秒ごとの更新(サーバー同期/ゴースト記録もここに集約できる)
-   tick() {
-    if (this.hitStop > 0) { this.hitStop--; return; }
-    const k = this.keys;
-    const input = {
-        x: (k.D.isDown || k.RIGHT.isDown ? 1 : 0) - (k.A.isDown || k.LEFT.isDown ? 1 : 0),
-        jump: false, sword: false, fist: false, parry: false, dodge: false,
-        ...this.pending,
-    };
-    this.pending = {};
-    this.socket.emit("gameaction", { input, position: this.player.sprite.x });
-    this.player.tick(input, [this.dummy]);
-    this.tickDummy();
+    tick() {
+        if (this.hitStop > 0) { this.hitStop--; return; }
+        const k = this.keys;
+        const input = {
+            x: (k.D.isDown || k.RIGHT.isDown ? 1 : 0) - (k.A.isDown || k.LEFT.isDown ? 1 : 0),
+            jump: false, sword: false, fist: false, parry: false, dodge: false,
+            ...this.pending,
+        };
+        this.pending = {};
+        this.socket.emit("gameaction", { input, position: this.player.sprite.x });
+        this.player.tick(input, [this.dummy]);
+        this.tickDummy();
 
-    if (!this.stage.cleared && this.player.state !== S.DEAD
-        && this.player.sprite.x >= this.worldWidth - 200) {
-        this.stage.cleared = true;
-        this.socket.emit("stageClear");
+        if (!this.stage.cleared && this.player.state !== S.DEAD
+            && this.player.sprite.x >= this.worldWidth - 200) {
+            this.stage.cleared = true;
+            this.socket.emit("stageClear");
+        }
+
+        // ボス部屋への到達判定
+        if (!this.bossTransitioning && this.player.sprite.x >= this.bossEntranceX) {
+            this.bossTransitioning = true;
+            this.registry.set("LastPosition", this.bossEntranceX - 200);
+            this.player.sprite.body.setVelocity(0, 0);
+            this.scene.start("BossScene");
+            return;
+        }
+
+        if (this.player.state === S.DEAD) {
+            this.triggerGameOver("力尽きてしまった");
+            return;
+        }
+        if (this.player.sprite.y > this.deathY) {
+            this.triggerGameOver("穴に落ちてしまった");
+            return;
+        }
     }
 
-    // ボス部屋への到達判定
-    if (!this.bossTransitioning && this.player.sprite.x >= this.bossEntranceX) {
-        this.bossTransitioning = true;
-        this.registry.set("LastPosition", this.bossEntranceX - 200);
-        this.player.sprite.body.setVelocity(0, 0);
-        this.scene.start("BossScene");
-        return;
-    }
-
-    if (this.player.state === S.DEAD) {
-        this.triggerGameOver("力尽きてしまった");
-        return;
-    }
-    if (this.player.sprite.y > this.deathY) {
-        this.triggerGameOver("穴に落ちてしまった");
-        return;
-    }
-}
-    
     // 練習用ダミー: 一定間隔で予備動作つきの攻撃をしてくる(パリィ練習用)
     tickDummy() {
         const d = this.dummy;
