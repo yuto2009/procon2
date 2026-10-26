@@ -145,9 +145,15 @@ export default class GameScene extends Phaser.Scene {
             };
 
         // マップ全体のサイズ
-        const TOTAL_CHUNKS = 103;
+        const TOTAL_CHUNKS = 8;
         const WORLD_WIDTH = CHUNK_WIDTH * TOTAL_CHUNKS;
         const WORLD_HEIGHT = 600;
+
+        // ボスの門の位置
+        this.bossEntranceX = WORLD_WIDTH - CHUNK_WIDTH * 1.5;
+
+        // シーンの切り替えを一度だけ実行するためのフラグ
+        this.bossTransitioning = false;
 
         // 物理演算用の高さは画面より大きくする
         const PHYSICS_HEIGHT = WORLD_HEIGHT + 1200;
@@ -372,6 +378,44 @@ export default class GameScene extends Phaser.Scene {
             }
         }
 
+
+        // =============================
+        // ボス部屋への門
+        // =============================
+
+        // 門の本体
+        const bossGate = this.add.rectangle(
+            this.bossEntranceX,
+            476,
+            64,
+            136,
+            0x21152f
+        );
+
+        bossGate.setStrokeStyle(5, 0xc7a5ff);
+
+        // 門の中央の封印
+        const bossSeal = this.add.circle(
+            this.bossEntranceX,
+            470,
+            25,
+            0x7138a8,
+            0.9
+        );
+
+        bossSeal.setStrokeStyle(3, 0xe8d4ff);
+
+        // 門の上に表示する文字
+        this.add.text(
+            this.bossEntranceX,
+            385,
+            "BOSS ROOM",
+            {
+                fontSize: "20px",
+                color: "#e8d4ff",
+                fontStyle: "bold"
+            }
+        ).setOrigin(0.5);
         // 世界名を表示
         this.add.text(400, 8, world.name, {
             fontSize: "18px",
@@ -558,6 +602,25 @@ export default class GameScene extends Phaser.Scene {
         this.socket.emit("gameaction", { input: input, position: this.player.sprite.x });//１フレームごとに入力をサーバに送る
         this.player.tick(input, [this.dummy]);
         this.tickDummy();
+        // ボス部屋への到達判定
+        if (
+            !this.bossTransitioning &&
+            this.player.sprite.x >= this.bossEntranceX
+        ) {
+            this.bossTransitioning = true;
+
+            // ダンジョンへ戻るときの復帰位置を保存
+            this.registry.set(
+                "LastPosition",
+                this.bossEntranceX - 200
+            );
+
+            // キャラクターの動きを止めてシーンを切り替える
+            this.player.body.setVelocity(0, 0);
+
+            this.scene.start("BossScene");
+            return;
+        }
         if (this.player.state === S.DEAD) {
             this.triggerGameOver("力尽きてしまった");
             return;
