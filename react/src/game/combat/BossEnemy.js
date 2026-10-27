@@ -16,10 +16,18 @@ const FOOT_OFFSET = 0;
 export const BOSS_ATTACKS = {
     slash: {
         startup: 40, active: 6, recovery: 45,
-        range: 120, height: 100,
-        damage: 20, stamina: 0,
+        range: 180, height: 170,
+        lunge: 120,
+        damage: 80, stamina: 0,
         hitstun: 25, knockback: 320, hitStop: 6, shake: 0.01,
     },
+    dashattack: {
+        startup: 40, active: 6, recovery: 45,
+        range: 180, height: 170,
+        lunge: 120,
+        damage: 80, stamina: 0,
+        hitstun: 25, knockback: 320, hitStop: 6, shake: 0.01,
+    }
 };
 
 export const BS = {
@@ -126,8 +134,8 @@ export default class BossEnemy {
     // 攻撃中:判定が出ているあいだ毎フレーム、まだ当てていない相手だけ調べる
     tickActive(players) {
         const a = this.attack;
+        this.sprite.x += this.facing * (a.lunge ?? 0) / a.active;
         const rect = this.hitRect(a);
-
         if (DEBUG) {
             this.hitDebug
                 .setVisible(true)
@@ -205,7 +213,12 @@ export default class BossEnemy {
             this.sprite.y + this.sprite.height / 2 + FOOT_OFFSET
         );
         v.setFlipX(this.facing !== ART_FACING);
-
+        const texkey = this.state === BS.TELEGRAPH ? "boss_stance" :
+            (this.state === BS.ACTIVE || this.state === BS.RECOVER) ? "boss_swing" :
+                "boss";
+        if (v.texture.key !== texkey) {
+            v.setTexture(texkey).setDisplaySize(200, 170).setOrigin(0.5, 1);
+        }
         if (this.state === BS.DEAD) {
             v.setTint(0x555555);
             return;

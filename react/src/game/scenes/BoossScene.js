@@ -105,6 +105,8 @@ export default class BossScene extends Phaser.Scene {
             { frameWidth: 96, frameHeight: 32 }
         );
         this.load.image("boss", "/assets/bossenemy1.png");
+        this.load.image("boss_stance", "/assets/boss1attackwait.png");  // 構え
+        this.load.image("boss_swing", "/assets/boss1attack.png");       // 振り終わり
     }
 
     create() {
