@@ -41,7 +41,7 @@ function createFighterAnims(scene, key) {
 }
 
 export default class Fighter {
-  constructor(scene, x, y, { color, texture, maxHp = 100 }) {
+  constructor(scene, x, y, { color, texture, maxHp = 100,damageMul = 1 }) {
     this.scene = scene;
     this.baseColor = color;
     this.texture = texture;
@@ -64,6 +64,7 @@ export default class Fighter {
       .rectangle(0, 0, 10, 10, 0xffffff, 0.35)
       .setVisible(false);
     this.maxHp = maxHp;
+    this.damageMul = damageMul;
     this.weapon = "sword";
     this.reset(x, y);
   }
