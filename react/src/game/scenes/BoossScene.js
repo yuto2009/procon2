@@ -109,6 +109,12 @@ export default class BossScene extends Phaser.Scene {
         this.load.image("boss_swing", "/assets/boss1attack.png");       // 振り終わり
         this.load.image("boss_dash", "/assets/boss1dash.png");
         this.load.image("boss_dashattack", "/assets/boss1dashattack.png");
+        this.load.image("boss_footattack", "/assets/boss1footattack.png");
+        this.load.image("boss_footwait", "/assets/boss1footwait.png");
+        this.load.image("boss_stun", "/assets/boss1stun.png");
+        this.load.image("boss_stun", "/assets/boss1stun.png");           // 疲労
+        this.load.image("boss_parystun", "/assets/boss1parystun.png");   // パリィされた
+        this.load.image("boss_dead", "/assets/boss1slaied.png");
     }
 
     create() {

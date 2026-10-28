@@ -22,8 +22,8 @@ const DASH_TURN = 0.06;         // ダッシュ中に向きを変えられる量
 const DASH_POSE_SPLIT = 0.6;    // ダッシュ中、前半(この割合)は dash の絵、後半は dashattack の絵
 const DASH_CHANCE_NEAR = 0.2;   // 近くにいるとき、ダッシュを選ぶ確率(外れたら斬り)
 const DASH_CHANCE_FAR = 0.6;    // 遠くにいるとき
-const DASH_CHANCE_HIGH = 0.85;  // 相手が上の足場にいるとき
-const RETRY_WAIT = 20;          // 攻撃を選ばなかったとき、次に選び直すまでの待ち(フレーム)
+const DASH_CHANCE_HIGH = 0.9;  // 相手が上の足場にいるとき
+const RETRY_WAIT = 1;          // 攻撃を選ばなかったとき、次に選び直すまでの待ち(フレーム)
 
 // ---------- 急に別の人を狙う動きの調整用(2人とも生きているときだけ働く) ----------
 const SWITCH_CHANCE = 0.3;      // 攻撃を選ぶとき、近い人ではなく別の人を狙う確率
@@ -33,23 +33,50 @@ const SWITCH_AT = 0.4;          // ダッシュのどのあたりで変えるか
 // ---------- ダッシュのあとの斬りの調整用 ----------
 const FAST_SLASH_CHANCE = 0.5;  // 速いダッシュ斬りになる確率(外れたら遅い普通の斬り)
 
+// ---------- 足攻撃(すぐ近くにいる相手用)の調整用 ----------
+const CLOSE_RANGE = 140;        // 横の距離がこれ以内なら「すぐ近く」(px)
+const FOOT_CHANCE = 0.7;        // すぐ近くにいるとき、足攻撃を選ぶ確率(外れたら他の攻撃)
+
+// ---------- 下の足場など、床より高いところにいる相手用 ----------
+const RAISED_OFFSET = 90;           // 床からこれ以上浮いていたら「足場の上」とみなす(px)
+const DASH_CHANCE_PLATFORM = 1;   // 足場にある程度乗っている相手に、ダッシュを選ぶ確率
+const PLATFORM_STAY = 30;           // 足場に乗って、この時間(フレーム)たったらダッシュで狩りに行く
+
+// ---------- 体力が半分を切ったときの連続ダッシュ ----------
+const RAGE_HP_RATIO = 0.5;      // 体力がこの割合以下になると、ダッシュが連続になる
+const RAGE_DASH_MIN = 0.6;      // 怒り中、ダッシュを選ぶ確率の下限
+const RUSH_COUNT = 3;           // 連続ダッシュの回数
+const TIRED_FRAMES = 150;       // 連続ダッシュのあとの疲労の長さ(フレーム)。この間は動かず無防備
+
+// ---------- 倒されたあと ----------
+const DEAD_STAY = 90;           // 倒れた絵をそのまま見せておく時間(フレーム)
+const DEAD_FADE = 60;           // そのあと、すっと消えるまでの時間(フレーム)。1 にすると一瞬で消える
+
 // ボスの攻撃データ(Fighter の ATTACKS と同じ項目)
 // startup: 予備動作 / active: 判定が出ている時間 / recovery: 硬直(すべて 1/60秒のフレーム数)
 export const BOSS_ATTACKS = {
     slash: {
-        startup: 40, active: 6, recovery: 25,
+        startup: 30, active: 6, recovery: 20,
         range: 150, height: 170,
         lunge: 40,              // 振るあいだに前へ進む距離(px)
-        damage: 20, stamina: 0,
+        damage: 60, stamina: 0,
         hitstun: 25, knockback: 320, hitStop: 6, shake: 0.01,
+    },
+    // すぐ近くにいる相手用の、速い足攻撃(予備動作も硬直も短い)
+    foot: {
+        foot: true,
+        startup: 20, active: 5, recovery: 15,
+        range: 90, height: 15,  // 体の前に出る長さと、足元からの高さ
+        damage: 50, stamina: 0,
+        hitstun: 25, knockback: 300, hitStop: 6, shake: 0.01,
     },
     // ダッシュのあとに出る、速い斬り(予備動作が短い。パリィしにくい)
     dashSlash: {
         fast: true,
-        startup: 8, active: 6, recovery: 25,
+        startup: 8, active: 6, recovery: 20,
         range: 150, height: 170,
         lunge: 40,
-        damage: 18, stamina: 0,
+        damage: 35, stamina: 0,
         hitstun: 25, knockback: 340, hitStop: 6, shake: 0.01,
     },
     dash: {
@@ -58,10 +85,13 @@ export const BOSS_ATTACKS = {
         speed: 18,              // 1フレームに進む距離(px)。active と掛けた分だけ飛ぶ
         reach: 20,              // 体の判定を左右に広げる量(px)
         range: 0, height: 170,
-        damage: 25, stamina: 0,
+        damage: 35, stamina: 0,
         hitstun: 25, knockback: 360, hitStop: 6, shake: 0.012,
     },
 };
+
+// 連続ダッシュの2回目以降:予備動作を短くして、すぐ次の突進に入る
+BOSS_ATTACKS.dashRush = { ...BOSS_ATTACKS.dash, startup: 8 };
 
 export const BS = {
     IDLE: "idle",
@@ -70,6 +100,7 @@ export const BS = {
     RECOVER: "recover",
     STUN: "stun",
     DEAD: "dead",
+    TIRED: "tired",     // 連続ダッシュのあとの疲労
 };
 
 const IDLE_WAIT = 90;   // 攻撃の間の待ち時間(フレーム)
@@ -108,6 +139,10 @@ export default class BossEnemy {
         this.target = null;     // ダッシュで狙っている相手
         this.aim = 0;           // ダッシュの向き(ラジアン。0 が右、上は負の方向)
         this.vy = 0;            // 落下の速さ
+        this.chained = false;   // ダッシュからの追撃・連続ダッシュ中かどうか(空中にとどまる)
+        this.rushing = false;   // 連続ダッシュの最中かどうか
+        this.rushLeft = 0;      // 連続ダッシュの残り回数
+        this.stayFrames = new Map();  // 各プレイヤーが足場の上にいる時間(フレーム)
         this.stunFrames = 0;
         this.flashLeft = 0;
         this.hitSet = new Set();
@@ -118,19 +153,37 @@ export default class BossEnemy {
         this.state = state;
         this.frame = 0;
         if (state === BS.ACTIVE || state === BS.RECOVER) this.vy = 0;
-        // ダッシュからの追撃が終わったら(待機かスタンになったら)、追撃中の印を消す
-        if (state === BS.IDLE || state === BS.STUN) this.chained = false;
+        // 追撃・連続ダッシュが終わったら(待機・スタン・疲労になったら)、その印を消す
+        if (state === BS.IDLE || state === BS.STUN || state === BS.TIRED) {
+            this.chained = false;
+            this.rushing = false;
+            this.rushLeft = 0;
+        }
+    }
+
+    // 各プレイヤーが、床より浮いている(足場の上にいる)時間を数える
+    trackPlatformTime(players) {
+        for (const p of players) {
+            const up = p.sprite.y < this.groundY - RAISED_OFFSET;
+            this.stayFrames.set(p, up ? (this.stayFrames.get(p) ?? 0) + 1 : 0);
+        }
     }
 
     // ---------- 毎tick(1/60秒)呼ぶ。players は攻撃の対象(Fighter の配列) ----------
     tick(players) {
+        this.trackPlatformTime(players);
+
         // ダッシュ中以外は、空中にいたら床まで落ちる
         const dashing = this.state === BS.ACTIVE && this.attack?.dash;
         // ダッシュからの追撃は、構えて振るあいだ空中にとどまる(硬直で落ちる)
         const hover = this.chained && (this.state === BS.TELEGRAPH || this.state === BS.ACTIVE);
         if (!dashing && !hover) this.applyGravity();
 
-        if (this.state === BS.DEAD) return;
+        // 倒されたあとは、経過時間だけ数える(消えるタイミングに使う)
+        if (this.state === BS.DEAD) {
+            this.frame++;
+            return;
+        }
 
         this.frame++;
         if (this.flashLeft > 0) this.flashLeft--;
@@ -157,6 +210,10 @@ export default class BossEnemy {
             case BS.STUN:
                 if (this.frame >= this.stunFrames) this.enter(BS.IDLE);
                 break;
+            case BS.TIRED:
+                // 疲労:床に落ちて動かない(落下は tick の先頭で処理される)
+                if (this.frame >= TIRED_FRAMES) this.enter(BS.IDLE);
+                break;
         }
     }
 
@@ -179,21 +236,45 @@ export default class BossEnemy {
         const far = Math.abs(dx) > AGGRO;
         // 相手の中心が、ボスの頭より上にいる = 上の足場にいる
         const high = target.sprite.y < this.sprite.y - this.sprite.height / 2;
+        // 床より浮いている(下の足場の上、ジャンプ中など)
+        const up = target.sprite.y < this.groundY - RAISED_OFFSET;
+        // 足場に、ある程度の時間乗り続けている
+        const raised = up && (this.stayFrames.get(target) ?? 0) >= PLATFORM_STAY;
+        // 体力が半分以下なら怒り状態
+        const enraged = this.hp <= this.maxHp * RAGE_HP_RATIO;
 
-        const chance = high ? DASH_CHANCE_HIGH : far ? DASH_CHANCE_FAR : DASH_CHANCE_NEAR;
+        // すぐ近くの、床の上にいる相手には、速い足攻撃(足元の判定なので浮いている相手には出さない)
+        if (!high && !up && Math.abs(dx) <= CLOSE_RANGE && Math.random() < FOOT_CHANCE) {
+            this.attack = BOSS_ATTACKS.foot;
+            this.enter(BS.TELEGRAPH);
+            return;
+        }
+
+        let chance = high
+            ? DASH_CHANCE_HIGH
+            : raised
+                ? DASH_CHANCE_PLATFORM
+                : far
+                    ? DASH_CHANCE_FAR
+                    : DASH_CHANCE_NEAR;
+        if (enraged) chance = Math.max(chance, RAGE_DASH_MIN);
 
         if (Math.random() < chance) {
-            // ダッシュ攻撃
+            // ダッシュ攻撃(怒り中は連続ダッシュ)
             this.target = target;
             this.attack = BOSS_ATTACKS.dash;
+            if (enraged) {
+                this.rushing = true;
+                this.rushLeft = RUSH_COUNT - 1;
+            }
             this.updateAim(false);
             this.enter(BS.TELEGRAPH);
-        } else if (!far && !high) {
-            // 近くて高さも同じなら斬り
+        } else if (!far && !high && !up) {
+            // 近くて床の上なら斬り
             this.attack = BOSS_ATTACKS.slash;
             this.enter(BS.TELEGRAPH);
         } else {
-            // 遠い or 上にいるのにダッシュを選ばなかった:少し待って選び直す
+            // 遠い or 浮いている or 上にいるのにダッシュを選ばなかった:少し待って選び直す
             this.frame = IDLE_WAIT - RETRY_WAIT;
         }
     }
@@ -277,9 +358,21 @@ export default class BossEnemy {
         }
 
         if (this.frame >= a.active) {
-            // ダッシュのあとは、そのまま斬りにつなげる
-            if (a.dash) this.startFollowUp(players);
-            else this.enter(BS.RECOVER);
+            if (a.dash && this.rushing) {
+                // 連続ダッシュ:残りがあれば空中のまま次の突進、なければ疲労
+                if (this.rushLeft > 0) {
+                    this.rushLeft--;
+                    this.startRush(players);
+                } else {
+                    this.attack = null;
+                    this.enter(BS.TIRED);
+                }
+            } else if (a.dash) {
+                // ダッシュのあとは、そのまま斬りにつなげる
+                this.startFollowUp(players);
+            } else {
+                this.enter(BS.RECOVER);
+            }
         }
     }
 
@@ -300,6 +393,23 @@ export default class BossEnemy {
         this.chained = true;
     }
 
+    // 連続ダッシュの次の突進:相手を選び直して、短い予備動作でまた飛ぶ(落ちずに空中のまま)
+    startRush(players) {
+        const nearest = this.nearestAlive(players);
+        if (!nearest) {
+            this.enter(BS.RECOVER);
+            return;
+        }
+
+        const other = this.otherAlive(players, nearest);
+        this.target = other && Math.random() < SWITCH_CHANCE ? other : nearest;
+        this.attack = BOSS_ATTACKS.dashRush;
+        this.updateAim(false);
+        this.hitSet.clear();
+        this.enter(BS.TELEGRAPH);
+        this.chained = true;
+    }
+
     // 攻撃判定の四角形
     hitRect(a) {
         // ダッシュ:体そのものが当たり判定(左右に少し広げる)
@@ -310,6 +420,21 @@ export default class BossEnemy {
                 b.y,
                 b.width + a.reach * 2,
                 b.height
+            );
+        }
+
+        // 足攻撃:体の足元から前にかけて。体と重なるほど近くにいる相手にも当たる
+        if (a.foot) {
+            const half = this.sprite.width / 2;
+            const bottom = this.sprite.y + this.sprite.height / 2;
+            const left = this.facing > 0
+                ? this.sprite.x - half
+                : this.sprite.x - half - a.range;
+            return new Phaser.Geom.Rectangle(
+                left,
+                bottom - a.height,
+                half * 2 + a.range,
+                a.height
             );
         }
 
@@ -369,6 +494,13 @@ export default class BossEnemy {
 
     // 今の状態に合う絵の名前
     textureKey() {
+        // 倒されたときは、倒れた姿の絵
+        if (this.state === BS.DEAD) return "boss_dead";
+
+        // パリィされてスタンしているあいだ / 連続ダッシュのあとの疲労は、それぞれ専用の絵
+        if (this.state === BS.STUN) return "boss_parystun";
+        if (this.state === BS.TIRED) return "boss_stun";
+
         const a = this.attack;
 
         if (a && a.dash) {
@@ -386,6 +518,10 @@ export default class BossEnemy {
             ) {
                 return "boss_dashattack";
             }
+        } else if (a && a.foot) {
+            // 足攻撃:構え(footwait)→ 蹴り(footattack)
+            if (this.state === BS.TELEGRAPH) return "boss_footwait";
+            if (this.state === BS.ACTIVE || this.state === BS.RECOVER) return "boss_footattack";
         } else if (a) {
             if (this.state === BS.TELEGRAPH) return "boss_stance";
             if (this.state === BS.ACTIVE || this.state === BS.RECOVER) return "boss_swing";
@@ -421,7 +557,14 @@ export default class BossEnemy {
         }
 
         if (this.state === BS.DEAD) {
-            v.setTint(0x555555);
+            v.clearTint();   // 倒れた絵があるので、暗くはしない
+            // 少し倒れたままにしてから、すっと消える
+            const fade = Phaser.Math.Clamp((this.frame - DEAD_STAY) / DEAD_FADE, 0, 1);
+            v.setAlpha(1 - fade);
+            if (fade >= 1) {
+                v.setVisible(false);
+                this.sprite.setVisible(false);   // デバッグ用の枠も消す
+            }
             return;
         }
         if (this.flashLeft > 0) {
@@ -437,7 +580,10 @@ export default class BossEnemy {
                 v.setTint(0xff5555);   // 攻撃中:赤
                 break;
             case BS.STUN:
-                v.setTint(0xaa66ff);   // パリィされた:紫
+                v.clearTint();         // パリィされた:専用の絵があるので色は付けない
+                break;
+            case BS.TIRED:
+                v.clearTint();         // 疲労:専用の絵があるので色は付けない(攻撃のチャンス)
                 break;
             default:
                 v.clearTint();
