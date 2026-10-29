@@ -65,7 +65,7 @@ export const BOSS_ATTACKS = {
     // すぐ近くにいる相手用の、速い足攻撃(予備動作も硬直も短い)
     foot: {
         foot: true,
-        startup: 20, active: 5, recovery: 15,
+        startup: 18, active: 5, recovery: 15,
         range: 90, height: 15,  // 体の前に出る長さと、足元からの高さ
         damage: 50, stamina: 0,
         hitstun: 25, knockback: 300, hitStop: 6, shake: 0.01,
@@ -168,7 +168,11 @@ export default class BossEnemy {
             this.stayFrames.set(p, up ? (this.stayFrames.get(p) ?? 0) + 1 : 0);
         }
     }
-
+    // 追加
+pickTarget(players) {
+    const alive = players.filter((p) => p.hp > 0);
+    return alive.length ? alive[Math.floor(Math.random() * alive.length)] : null;
+}
     // ---------- 毎tick(1/60秒)呼ぶ。players は攻撃の対象(Fighter の配列) ----------
     tick(players) {
    
@@ -187,7 +191,7 @@ export default class BossEnemy {
         this.frame++;
         if (this.flashLeft > 0) this.flashLeft--;
         this.hitDebug.setVisible(false);
-
+        this.hitInfo = null;
         switch (this.state) {
             case BS.IDLE:
                 this.tickIdle(players);
@@ -227,8 +231,7 @@ export default class BossEnemy {
         if (this.frame <= IDLE_WAIT) return;
 
         // ときどき、近い人ではなく別の人を急に狙う
-        const other = this.otherAlive(players, nearest);
-        const target = other && Math.random() < SWITCH_CHANCE ? other : nearest;
+        const target = this.pickTarget(players);
         const dx = target.sprite.x - this.sprite.x;
         this.facing = Math.sign(dx) || this.facing;
 
@@ -340,7 +343,7 @@ export default class BossEnemy {
         }
 
         const rect = this.hitRect(a);
-
+        this.hitInfo = { x: rect.centerX, y: rect.centerY, w: rect.width, h: rect.height };
         if (DEBUG) {
             this.hitDebug
                 .setVisible(true)
@@ -369,12 +372,27 @@ export default class BossEnemy {
             } else if (a.dash) {
                 // ダッシュのあとは、そのまま斬りにつなげる
                 this.startFollowUp(players);
-            } else {
+            } else if (a.foot && this.hitSet.size > 0) {
+                this.startAfterStomp(players);
+            }else {
                 this.enter(BS.RECOVER);
             }
         }
     }
+    startAfterStomp(players) {
+    const target = this.pickTarget(players);
+    if (!target) { this.enter(BS.RECOVER); return; }
+    this.target = target;
+    this.facing = Math.sign(target.sprite.x - this.sprite.x) || this.facing;
 
+    const r = Math.random();
+    if (r < 0.45) this.attack = BOSS_ATTACKS.slash;
+    else if (r < 0.80) { this.attack = BOSS_ATTACKS.dash; this.updateAim(false); }
+    else this.attack = BOSS_ATTACKS.foot;
+
+    this.hitSet.clear();
+    this.enter(BS.TELEGRAPH);
+}
     // ダッシュのあとの追撃:確率で、速いダッシュ斬りか、遅い普通の斬りを選ぶ
     startFollowUp(players) {
         const target =
@@ -491,6 +509,7 @@ export default class BossEnemy {
             flash: this.flashLeft,                      // 被弾で白く光る残りフレーム
             hp: this.hp,
             maxHp: this.maxHp,
+            hit: this.hitInfo,
         };
     }
 

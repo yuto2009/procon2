@@ -215,10 +215,6 @@ export default class BossScene extends Phaser.Scene {
         const platforms = [];
 
         const platformData = [
-            { x: BOSS_X - 240, y: 480, width: 180 },   // 左の下段
-            { x: BOSS_X - 240, y: 380, width: 180 },   // 左の上段(下段の真上)
-            { x: BOSS_X + 240, y: 480, width: 180 },   // 右の下段
-            { x: BOSS_X + 240, y: 380, width: 180 }    // 右の上段(下段の真上)
         ];
 
         for (const p of platformData) {
@@ -283,7 +279,7 @@ export default class BossScene extends Phaser.Scene {
                 fontStyle: "bold"
             }
         ).setOrigin(0.5).setDepth(6);
-
+        this.guestHit = this.add.rectangle(0, 0, 10, 10, 0xffffff, 0.35).setVisible(false).setDepth(6);
         // =============================
         // 2人分の開始位置(ボスを挟んで左右)
         // =============================
@@ -388,7 +384,7 @@ export default class BossScene extends Phaser.Scene {
 
         if (role === "guest") {
             // ホストのボスの状態を受け取って表示する
-            on("boss1togest", (d) => {
+            socket.on("boss1togest", (d) => {
                 const b = this.boss;
                 b.sprite.x = d.x;
                 b.sprite.y = d.y;
@@ -399,14 +395,17 @@ export default class BossScene extends Phaser.Scene {
                 b.aim = d.aim;
                 b.flashLeft = d.flash;
                 b.hp = d.hp;
+                 if (d.hit) this.guestHit.setVisible(true).setPosition(d.hit.x, d.hit.y).setSize(d.hit.w, d.hit.h);
+else this.guestHit.setVisible(false);
             });
-
+            if (data.hit) this.guestHitBox.setVisible(true).setPosition(data.hit.x, data.hit.y).setSize(data.hit.w, data.hit.h);
+                else this.guestHitBox.setVisible(false);
             // ボスの攻撃が当たった知らせ:自分のキャラに、自分の画面で当てる(パリィ・回避もここで判定)
             on("boss1hit", ({ attack }) => {
                 const a = BOSS_ATTACKS[attack];
                 if (a && this.player.state !== S.DEAD) this.player.receiveHit(this.boss, a);
             });
-
+           
             // 自分の攻撃がボスに当たったら、ホストに知らせる(ダメージはホストが決める)
             this.boss.mirror = true;
             this.boss.onMirrorHit = (attacker) => {
@@ -579,15 +578,13 @@ export default class BossScene extends Phaser.Scene {
         const k = this.keys;
         const J = Phaser.Input.Keyboard.JustDown;
 
-        if (J(k.W) || J(k.UP) || J(k.SPACE)) {
-            this.pending.jump = true;
-        }
+        if (J(k.W) || J(k.UP)) this.pending.jump = true;
 
         if (J(k.J)) this.pending.sword = true;
         if (J(k.K)) this.pending.fist = true;
         if (J(k.L)) this.pending.parry = true;
-        if (J(k.SHIFT)) this.pending.dodge = true;
-    }
+        if (J(k.SHIFT) || J(k.SPACE)) this.pending.dodge = true;
+    };
 
     update(_, delta) {
         this.readKeys();

@@ -13,7 +13,9 @@ export const S = {
 };
 
 const DEBUG = true; // true: 当たり判定の枠を表示 / 完成時は false
-
+const PARRY_DELAY = 4;   // 構えてから受付が始まるまで(フレーム)
+const PARRY_WIN = 6;     // 受付時間(フレーム)。元の PARRY.window より短くする
+const DODGE_STAMINA_MUL = 0.5;
 const FRAMES = {
   jump: 6,
   sword: [7, 8, 9],
@@ -108,7 +110,7 @@ export default class Fighter {
         this.tickAttack(targets);
         break;
       case S.PARRY:
-        if (this.frame >= PARRY.window + PARRY.recovery) this.enter(S.IDLE);
+        if (this.frame >= PARRY.delay + PARRY.window + PARRY.recovery) this.enter(S.IDLE);
         break;
       case S.DODGE:
         this.body.setVelocityX(this.dodgeDir * DODGE.speed);
@@ -240,8 +242,8 @@ export default class Fighter {
         // パリィ成功
     if (
       this.state === S.PARRY &&
-      this.frame <= PARRY.window &&
-      attackerIsFront
+      this.frame <= PARRY_DELAY && this.frame <= PARRY_DELAY + PARRY_WIN &&
+attackerIsFront
     ) {
       this.stamina = Math.min(STAMINA.max, this.stamina + PARRY.staminaGain);
       attacker.stun(PARRY.enemyStun);
@@ -334,7 +336,8 @@ export default class Fighter {
             ? 0xff3333
             : 0x888888;
     } else if (this.state === S.PARRY) {
-      color = this.frame <= PARRY.window ? 0x33ffff : 0x338888;
+      color = this.frame >= PARRY.delay && this.frame <= PARRY.delay + PARRY.window ? 0x33ffff : 0x338888;
+
     } else if (this.state === S.STUN) {
       color = 0xaa66ff;
     }
@@ -366,7 +369,7 @@ export default class Fighter {
         break;
       }
       case S.PARRY:
-        still(this.frame <= PARRY.window ? FRAMES.parry[0] : FRAMES.parry[1]);
+        still(this.frame >= PARRY.delay && this.frame <= PARRY.delay + PARRY.window ? FRAMES.parry[0] : FRAMES.parry[1]);
         break;
       case S.DODGE:
         still(FRAMES.dodge);
