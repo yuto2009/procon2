@@ -1,9 +1,12 @@
 import Phaser from "phaser";
 import Fighter, { S } from "../combat/Fighter";
-import BossEnemy from "../combat/BossEnemy";
-import { FPS, STAMINA, FX } from "../combat/frameData";
-
+import { FPS, STAMINA, FX, ATTACKS, PARRY } from "../combat/frameData";
+import BossEnemy, { BOSS_ATTACKS } from "../combat/BossEnemy";
+const socket = window.socket;  
 const STEP = 1000 / FPS;
+
+// ボスと自分の動きを、何tickに1回送るか(1: 1秒に60回 / 2: 30回 / 3: 20回)
+const SYNC_EVERY = 1;
 
 export default class BossScene extends Phaser.Scene {
     constructor() {
@@ -111,7 +114,6 @@ export default class BossScene extends Phaser.Scene {
         this.load.image("boss_dashattack", "/assets/boss1dashattack.png");
         this.load.image("boss_footattack", "/assets/boss1footattack.png");
         this.load.image("boss_footwait", "/assets/boss1footwait.png");
-        this.load.image("boss_stun", "/assets/boss1stun.png");
         this.load.image("boss_stun", "/assets/boss1stun.png");           // 疲労
         this.load.image("boss_parystun", "/assets/boss1parystun.png");   // パリィされた
         this.load.image("boss_dead", "/assets/boss1slaied.png");
@@ -238,7 +240,7 @@ export default class BossScene extends Phaser.Scene {
         // =============================
         // ボス：アリーナ中央に配置(床の上端は y=560)
         // =============================
-        
+
         this.boss = new BossEnemy(this, BOSS_X, 560, {
             texture: "boss",
             maxHp: 1000 // BossHp
@@ -317,8 +319,12 @@ export default class BossScene extends Phaser.Scene {
             }
         ).setOrigin(0.5);
 
-        // ルーム作成者と参加者で開始位置を分ける
+        // ルーム作成者(host)と参加者(guest)で開始位置を分ける
         const role = this.registry.get("worldRole") ?? "host";
+        this.role = role;
+        this.syncCount = 0;
+        this.remoteSeen = false;   // 相手の動きが届いたか(1人だけのときは false のまま)
+        this.spectating = false;
 
         const spawnX = role === "guest"
             ? spawn2X
@@ -334,6 +340,99 @@ export default class BossScene extends Phaser.Scene {
                 texture: "player"
             }
         );
+
+        // 相手のキャラクター(表示専用。ホストのボスは、これも狙う)
+        this.remote = new Fighter(
+            this,
+            role === "guest" ? spawn1X : spawn2X,
+            520,
+            {
+                color: role === "guest" ? 0x66aaff : 0xffcc66,
+                texture: "player"
+            }
+        );
+        this.remote.remote = true;
+        this.remote.body.setAllowGravity(false);
+        this.remote.body.setImmovable(true);
+
+        // 相手の動きが届くまでは、見せない
+        this.remote.view.setAlpha(0);
+        this.remote.sprite.setAlpha(0);
+
+        // =============================
+        // 通信(ホストとゲストでボスと戦いを合わせる)
+        // =============================
+
+        // 受信の登録(シーンを抜けるときに外す)
+        const on = (ev, fn) => {
+            socket.on(ev, fn);
+            this.events.once("shutdown", () => socket.off(ev, fn));
+        };
+
+        // 相手の動き
+        on("boss1player", (d) => {
+            if (!this.remoteSeen) {
+                this.remoteSeen = true;
+                this.remote.view.setAlpha(1);
+                this.remote.sprite.setAlpha(1);
+            }
+            this.remote.applySyncData(d);
+        });
+
+        // 相手が抜けたら、見えなくする(やり直しの判定にも使う)
+        on("playerLeft", () => {
+            this.remoteSeen = false;
+            this.remote.view.setAlpha(0);
+            this.remote.sprite.setAlpha(0);
+        });
+
+        if (role === "guest") {
+            // ホストのボスの状態を受け取って表示する
+            on("boss1togest", (d) => {
+                const b = this.boss;
+                b.sprite.x = d.x;
+                b.sprite.y = d.y;
+                b.facing = d.facing;
+                b.state = d.state;
+                b.attack = BOSS_ATTACKS[d.attack] ?? null;
+                b.frame = d.frame;
+                b.aim = d.aim;
+                b.flashLeft = d.flash;
+                b.hp = d.hp;
+            });
+
+            // ボスの攻撃が当たった知らせ:自分のキャラに、自分の画面で当てる(パリィ・回避もここで判定)
+            on("boss1hit", ({ attack }) => {
+                const a = BOSS_ATTACKS[attack];
+                if (a && this.player.state !== S.DEAD) this.player.receiveHit(this.boss, a);
+            });
+
+            // 自分の攻撃がボスに当たったら、ホストに知らせる(ダメージはホストが決める)
+            this.boss.mirror = true;
+            this.boss.onMirrorHit = (attacker) => {
+                socket.emit("boss1damage", { key: attacker.attackKey });
+            };
+        }
+
+        if (role === "host") {
+            // ホストのボスが、ゲストのキャラに当てた:ゲストに知らせる
+            this.remote.onRemoteHit = (attacker, a) => {
+                const name = Object.keys(BOSS_ATTACKS).find((k) => BOSS_ATTACKS[k] === a);
+                if (name) socket.emit("boss1hit", { attack: name });
+            };
+
+            // ゲストの攻撃が当たった:ホストのボスにダメージを入れる
+            on("boss1damage", ({ key }) => {
+                const a = ATTACKS[key];
+                if (a) this.boss.receiveHit(this.remote, a);
+            });
+
+            // ゲストがパリィした:ホストのボスをスタンさせる
+            on("boss1parry", () => {
+                this.boss.stun(PARRY.enemyStun);
+                this.events.emit("parry", this.remote, this.boss);   // 「PARRY!」の表示用
+            });
+        }
 
         // 地面の当たり判定
         this.physics.add.collider(
@@ -448,6 +547,8 @@ export default class BossScene extends Phaser.Scene {
         const onParry = (f) => {
             this.popText(f.sprite.x, f.sprite.y - 50, "PARRY!");
             this.cameras.main.shake(100, FX.parryShake);
+            // ゲストが自分でパリィしたら、ホストに知らせる(ホストのボスをスタンさせるため)
+            if (role === "guest" && f === this.player) socket.emit("boss1parry");
         };
         const onHit = (victim, attacker, atk) => {
             this.cameras.main.shake(100, atk.shake ?? 0);
@@ -499,6 +600,7 @@ export default class BossScene extends Phaser.Scene {
         }
 
         this.player.render();
+        this.remote.render();
         this.boss.render();
         this.updateBossHpBar();
         this.drawPlayerHud();
@@ -526,11 +628,29 @@ export default class BossScene extends Phaser.Scene {
         // プレイヤーの攻撃はボスに当たる
         this.player.tick(input, [this.boss]);
 
-        // ボスの動き(2人対戦では、ここをホストだけが実行する形にする予定)
-        this.boss.tick([this.player]);
+        this.syncCount++;
+        const send = this.syncCount % SYNC_EVERY === 0;
 
-        // プレイヤーが倒れたら、少し待ってからやり直す
-        if (this.player.state === S.DEAD && !this.restarting) {
+        // ボスを動かすのはホストだけ。相手が来ていなければ、自分だけを狙う
+        if (this.role === "host") {
+            const targets = this.remoteSeen ? [this.player, this.remote] : [this.player];
+            this.boss.tick(targets);
+            if (send) socket.emit("boss1host", this.boss.getSyncData());
+        }
+
+        // 自分の動きを、相手へ送る
+        if (send) socket.emit("boss1player", this.player.getSyncData());
+
+        // 片方が倒れても、もう片方が倒れるまでは続ける。2人とも倒れたらやり直す
+        const iDead = this.player.state === S.DEAD;
+        const otherDead = !this.remoteSeen || this.remote.state === S.DEAD;
+
+        if (iDead && !otherDead && !this.spectating) {
+            // 倒れたら、生きている相手を見る
+            this.spectating = true;
+            this.cameras.main.startFollow(this.remote.sprite, true, 0.1, 0.1);
+        }
+        if (iDead && otherDead && !this.restarting) {
             this.restarting = true;
             this.time.delayedCall(1500, () => this.scene.restart());
         }

@@ -81,6 +81,7 @@ io.on("connection", (socket) => {
         socket.join(roomId);
         socket.data.roomId = roomId;
         rooms.set(roomId, {
+          hostId : sess.user_id,
           members: { [sess.user_id]: name },
           players: {},   // ステージ・クリア状況(userId ごと)
         });

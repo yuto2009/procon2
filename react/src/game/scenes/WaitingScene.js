@@ -104,17 +104,26 @@ export default class WaitingScene extends Phaser.Scene {
             }
             socket.emit("startGame");
         });
-
+        const Boss1Room = ({role}) =>{
+            this.registry.set("worldRole",role);
+            this.scene.start("BossScene");
+        }
         socket.on("startGame", onStartGame);
         socket.on("playerLeft", onPlayerLeft);
         socket.on("writingscene", onWritingScene);
         socket.on("joinroom", onJoinRoom);
-
+        socket.on("Boss1Room",Boss1Room);
         this.events.once("shutdown", () => {
             socket.off("writingscene", onWritingScene);
             socket.off("joinroom", onJoinRoom);
             socket.off("playerLeft", onPlayerLeft);
             socket.off("startGame", onStartGame);
+            socket.off("Boss1Room");
         });
+        //デバッグ用ｂを押すとボス1に行く
+       this.input.keyboard.once("keydown-B",() =>{
+            socket.emit("Boss1Room");
+            this.scene.start("BossScene");
+       });
     }
 }

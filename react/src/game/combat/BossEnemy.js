@@ -20,7 +20,7 @@ const GRAVITY = 0.8;        // 空中から床へ戻るときの落下の強さ(
 // ---------- ダッシュ攻撃の調整用 ----------
 const DASH_TURN = 0.06;         // ダッシュ中に向きを変えられる量(ラジアン/フレーム)。大きいほど追尾が強い
 const DASH_POSE_SPLIT = 0.6;    // ダッシュ中、前半(この割合)は dash の絵、後半は dashattack の絵
-const DASH_CHANCE_NEAR = 0.45;   // 近くにいるとき、ダッシュを選ぶ確率(外れたら斬り)
+const DASH_CHANCE_NEAR = 0.2;   // 近くにいるとき、ダッシュを選ぶ確率(外れたら斬り)
 const DASH_CHANCE_FAR = 0.6;    // 遠くにいるとき
 const DASH_CHANCE_HIGH = 0.9;  // 相手が上の足場にいるとき
 const RETRY_WAIT = 1;          // 攻撃を選ばなかったとき、次に選び直すまでの待ち(フレーム)
@@ -103,7 +103,7 @@ export const BS = {
     TIRED: "tired",     // 連続ダッシュのあとの疲労
 };
 
-const IDLE_WAIT = 60;   // 攻撃の間の待ち時間(フレーム)
+const IDLE_WAIT = 90;   // 攻撃の間の待ち時間(フレーム)
 const AGGRO = 260;      // この距離より遠いと「遠い」扱い。近いときだけ斬りを出す(px)
 
 export default class BossEnemy {
@@ -148,6 +148,7 @@ export default class BossEnemy {
         this.hitSet = new Set();
         this.enter(BS.IDLE);
     }
+
     enter(state) {
         this.state = state;
         this.frame = 0;
@@ -170,14 +171,13 @@ export default class BossEnemy {
 
     // ---------- 毎tick(1/60秒)呼ぶ。players は攻撃の対象(Fighter の配列) ----------
     tick(players) {
+   
         this.trackPlatformTime(players);
-
         // ダッシュ中以外は、空中にいたら床まで落ちる
         const dashing = this.state === BS.ACTIVE && this.attack?.dash;
         // ダッシュからの追撃は、構えて振るあいだ空中にとどまる(硬直で落ちる)
         const hover = this.chained && (this.state === BS.TELEGRAPH || this.state === BS.ACTIVE);
         if (!dashing && !hover) this.applyGravity();
-
         // 倒されたあとは、経過時間だけ数える(消えるタイミングに使う)
         if (this.state === BS.DEAD) {
             this.frame++;
@@ -468,10 +468,40 @@ export default class BossEnemy {
         return players.find((p) => p !== exclude && p.hp > 0) ?? null;
     }
 
+    // ---------- 相手に送るためのデータ(通信は自分で作る) ----------
+    // 位置・向き・状態・攻撃の種類・HP をまとめて返す。そのまま JSON で送れる
+    getSyncData() {
+        // 今出している攻撃の名前("slash" や "dash" など)。出していなければ null
+        let attackName = null;
+        for (const [name, a] of Object.entries(BOSS_ATTACKS)) {
+            if (a === this.attack) {
+                attackName = name;
+                break;
+            }
+        }
+
+        return {
+            x: Math.round(this.sprite.x),
+            y: Math.round(this.sprite.y),
+            facing: this.facing,                        // -1: 左 / 1: 右
+            state: this.state,                          // idle / telegraph / active / recover / stun / dead / tired
+            attack: attackName,
+            frame: this.frame,                          // 今の状態に入ってからのフレーム数
+            aim: Math.round(this.aim * 1000) / 1000,    // ダッシュの向き(ラジアン)
+            flash: this.flashLeft,                      // 被弾で白く光る残りフレーム
+            hp: this.hp,
+            maxHp: this.maxHp,
+        };
+    }
+
     // ---------- プレイヤーの攻撃を受ける(Fighter から呼ばれる) ----------
     receiveHit(attacker, a) {
         if (this.state === BS.DEAD) return;
-
+        if(this.mirror){
+            this.scene.events.emit("hit", this, attacker, a );
+            this.onMirrorHit?.(attacker, a);
+            return;
+        }
         this.hp = Math.max(0, this.hp - a.damage);
         this.flashLeft = FX.flashFrames;
         this.scene.events.emit("hit", this, attacker, a);
@@ -485,6 +515,7 @@ export default class BossEnemy {
 
     // パリィされたときに Fighter から呼ばれる
     stun(frames) {
+        if(this.mirror) return;
         if (this.state === BS.DEAD) return;
         this.stunFrames = frames;
         this.attack = null;

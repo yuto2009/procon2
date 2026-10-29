@@ -66,6 +66,9 @@ export default class Fighter {
     this.maxHp = maxHp;
     this.damageMul = damageMul;
     this.weapon = "sword";
+    this.remote = false;           // true: 相手のキャラ(表示専用。動きは通信で届く)
+    this.remoteOnGround = true;    // 相手のキャラが地面にいるか(通信で届く)
+    this.remoteVx = 0;             // 相手のキャラの横の速さ(通信で届く)
     this.reset(x, y);
   }
 
@@ -221,6 +224,13 @@ export default class Fighter {
 
   // ---------- 被弾 / パリィ判定 ----------
   receiveHit(attacker, a) {
+    // 相手のキャラは表示専用:ダメージの処理は相手の画面でやる。
+    // 当たったことだけ、シーン側(onRemoteHit)に知らせる
+    if (this.remote) {
+      this.onRemoteHit?.(attacker, a);
+      return;
+    }
+
     if (this.state === S.DEAD) return;
 
     const attackerIsFront =
@@ -262,6 +272,37 @@ export default class Fighter {
     this.enter(S.STUN);
   }
 
+  // ---------- 相手に送るためのデータ ----------
+  getSyncData() {
+    return {
+      x: Math.round(this.sprite.x),
+      y: Math.round(this.sprite.y),
+      vx: Math.round(this.body.velocity.x),
+      facing: this.facing,
+      state: this.state,
+      frame: this.frame,
+      key: this.attackKey ?? null,
+      onGround: this.body.blocked.down || this.body.touching.down,
+      hp: this.hp,
+      flash: this.flashLeft,
+    };
+  }
+
+  // 相手から届いたデータを反映する(remote の Fighter 用)
+  applySyncData(d) {
+    this.sprite.setPosition(d.x, d.y);
+    this.body.setVelocity(0, 0);
+    this.facing = d.facing;
+    this.state = d.state;
+    this.frame = d.frame;
+    this.attackKey = d.key;
+    this.attack = d.key ? ATTACKS[d.key] : null;
+    this.hp = d.hp;
+    this.flashLeft = d.flash;
+    this.remoteOnGround = d.onGround;
+    this.remoteVx = d.vx;
+  }
+
   // ---------- スタミナ ----------
   spend(cost) {
     this.stamina = Math.max(0, this.stamina - cost);
@@ -283,7 +324,7 @@ export default class Fighter {
     // デバッグ時のみ、状態を四角形の色で表示
     if (!DEBUG) return;
     let color = this.baseColor;
-    if (this.state === S.ATTACK) {
+    if (this.state === S.ATTACK && this.attack) {
       const a = this.attack,
         f = this.frame;
       color =
@@ -302,7 +343,12 @@ export default class Fighter {
 
   updateView() {
     const v = this.view;
-    v.setPosition(this.body.center.x, this.body.bottom);
+    // 相手のキャラは、通信で届いた位置をそのまま使う(物理の更新を待たない)
+    if (this.remote) {
+      v.setPosition(this.sprite.x, this.sprite.y + this.sprite.height / 2);
+    } else {
+      v.setPosition(this.body.center.x, this.body.bottom);
+    }
     v.setFlipX(this.facing < 0);
 
     const still = (frame) => {
@@ -312,6 +358,7 @@ export default class Fighter {
 
     switch (this.state) {
       case S.ATTACK: {
+        if (!this.attack) break;
         const set = this.attackKey === "fist" ? FRAMES.fist : FRAMES.sword;
         const a = this.attack,
           f = this.frame;
@@ -331,9 +378,12 @@ export default class Fighter {
         still(FRAMES.dead);
         break;
       default: {
-        const onGround = this.body.blocked.down || this.body.touching.down;
+        const onGround = this.remote
+          ? this.remoteOnGround
+          : (this.body.blocked.down || this.body.touching.down);
+        const vx = this.remote ? this.remoteVx : this.body.velocity.x;
         if (!onGround) still(FRAMES.jump);
-        else if (Math.abs(this.body.velocity.x) > 10)
+        else if (Math.abs(vx) > 10)
           v.anims.play(`${this.texture}-run`, true);
         else v.anims.play(`${this.texture}-idle`, true);
         if(this.flashLeft > 0) v.setTintFill(0xffffff);
