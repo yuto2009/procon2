@@ -20,7 +20,7 @@ const GRAVITY = 0.8;        // 空中から床へ戻るときの落下の強さ(
 // ---------- ダッシュ攻撃の調整用 ----------
 const DASH_TURN = 0.06;         // ダッシュ中に向きを変えられる量(ラジアン/フレーム)。大きいほど追尾が強い
 const DASH_POSE_SPLIT = 0.6;    // ダッシュ中、前半(この割合)は dash の絵、後半は dashattack の絵
-const DASH_CHANCE_NEAR = 0.2;   // 近くにいるとき、ダッシュを選ぶ確率(外れたら斬り)
+const DASH_CHANCE_NEAR = 0.45;   // 近くにいるとき、ダッシュを選ぶ確率(外れたら斬り)
 const DASH_CHANCE_FAR = 0.6;    // 遠くにいるとき
 const DASH_CHANCE_HIGH = 0.9;  // 相手が上の足場にいるとき
 const RETRY_WAIT = 1;          // 攻撃を選ばなかったとき、次に選び直すまでの待ち(フレーム)
@@ -148,7 +148,6 @@ export default class BossEnemy {
         this.hitSet = new Set();
         this.enter(BS.IDLE);
     }
-
     enter(state) {
         this.state = state;
         this.frame = 0;
