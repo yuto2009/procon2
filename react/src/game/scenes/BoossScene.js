@@ -1,11 +1,11 @@
+
 import Phaser from "phaser";
 import Fighter, { S } from "../combat/Fighter";
 import { FPS, STAMINA, FX, ATTACKS, PARRY } from "../combat/frameData";
 import BossEnemy, { BOSS_ATTACKS } from "../combat/BossEnemy";
-const socket = window.socket;  
-const STEP = 1000 / FPS;
 
-// ボスと自分の動きを、何tickに1回送るか(1: 1秒に60回 / 2: 30回 / 3: 20回)
+const socket = window.socket;
+const STEP = 1000 / FPS;
 const SYNC_EVERY = 1;
 
 export default class BossScene extends Phaser.Scene {
@@ -13,7 +13,6 @@ export default class BossScene extends Phaser.Scene {
         super("BossScene");
     }
 
-    // ボスのHPバーを更新
     updateBossHpBar() {
         const g = this.bossHpGraphics;
         const hp = this.boss.hp;
@@ -23,7 +22,6 @@ export default class BossScene extends Phaser.Scene {
 
         const ratio = Phaser.Math.Clamp(hp / maxHp, 0, 1);
 
-        // バーの背景
         g.fillStyle(0x241522, 1);
         g.fillRoundedRect(
             this.bossHpBarX,
@@ -33,11 +31,10 @@ export default class BossScene extends Phaser.Scene {
             6
         );
 
-        // 残りHP（残量に応じて色を変更）
         const color =
             ratio > 0.5 ? 0xe83e65 :
-                ratio > 0.25 ? 0xffa52f :
-                    0xff3333;
+            ratio > 0.25 ? 0xffa52f :
+            0xff3333;
 
         if (ratio > 0) {
             g.fillStyle(color, 1);
@@ -50,7 +47,6 @@ export default class BossScene extends Phaser.Scene {
             );
         }
 
-        // 外枠
         g.lineStyle(2, 0xc7a5ff, 1);
         g.strokeRoundedRect(
             this.bossHpBarX,
@@ -63,7 +59,6 @@ export default class BossScene extends Phaser.Scene {
         this.bossHpText.setText(`${hp} / ${maxHp}`);
     }
 
-    // プレイヤーのHPとスタミナを更新
     drawPlayerHud() {
         const g = this.playerHud;
         g.clear();
@@ -87,7 +82,7 @@ export default class BossScene extends Phaser.Scene {
             .text(x, y, msg, {
                 fontSize: "24px",
                 color: "#66ffff",
-                fontStyle: "bold"
+                fontStyle: "bold",
             })
             .setOrigin(0.5)
             .setDepth(40);
@@ -97,7 +92,7 @@ export default class BossScene extends Phaser.Scene {
             y: y - 40,
             alpha: 0,
             duration: 600,
-            onComplete: () => t.destroy()
+            onComplete: () => t.destroy(),
         });
     }
 
@@ -107,47 +102,53 @@ export default class BossScene extends Phaser.Scene {
             "/assets/player.png",
             { frameWidth: 96, frameHeight: 32 }
         );
+
         this.load.image("boss", "/assets/bossenemy1.png");
-        this.load.image("boss_stance", "/assets/boss1attackwait.png");  // 構え
-        this.load.image("boss_swing", "/assets/boss1attack.png");       // 振り終わり
+        this.load.image("boss_stance", "/assets/boss1attackwait.png");
+        this.load.image("boss_swing", "/assets/boss1attack.png");
         this.load.image("boss_dash", "/assets/boss1dash.png");
         this.load.image("boss_dashattack", "/assets/boss1dashattack.png");
         this.load.image("boss_footattack", "/assets/boss1footattack.png");
         this.load.image("boss_footwait", "/assets/boss1footwait.png");
-        this.load.image("boss_stun", "/assets/boss1stun.png");           // 疲労
-        this.load.image("boss_parystun", "/assets/boss1parystun.png");   // パリィされた
+
+        // 突き刺し攻撃と衝撃波の画像
+        this.load.image("boss_thrustwait", "/assets/boss1thrustwait.png");
+        this.load.image("boss_thrustattack", "/assets/boss1thrustattack.png");
+        this.load.image("boss_shockwave", "/assets/boss1slash.png");
+
+        this.load.image("boss_stun", "/assets/boss1stun.png");
+        this.load.image("boss_parystun", "/assets/boss1parystun.png");
         this.load.image("boss_dead", "/assets/boss1slaied.png");
     }
 
     create() {
-        // 背景や床を描く部屋全体の幅
         const ROOM_WIDTH = 1800;
         const ROOM_HEIGHT = 600;
 
-        // ボスを中心にした遊べる範囲(アリーナ)。
-        // 画面の幅(800)とほぼ同じ広さで、カメラはほとんど動かない
         const BOSS_X = 900;
-        const ARENA_LEFT = BOSS_X - 400;    // 500
-        const ARENA_RIGHT = BOSS_X + 400;   // 1300
+        const ARENA_LEFT = BOSS_X - 400;
+        const ARENA_RIGHT = BOSS_X + 400;
         const ARENA_WIDTH = ARENA_RIGHT - ARENA_LEFT;
 
         this.cameras.main.setBackgroundColor("#17101e");
 
-        // プレイヤーはアリーナの外へ出られない
         this.physics.world.setBounds(
-            ARENA_LEFT, 0, ARENA_WIDTH, ROOM_HEIGHT
+            ARENA_LEFT,
+            0,
+            ARENA_WIDTH,
+            ROOM_HEIGHT
         );
 
         this.cameras.main.setBounds(
-            ARENA_LEFT, 0, ARENA_WIDTH, ROOM_HEIGHT
+            ARENA_LEFT,
+            0,
+            ARENA_WIDTH,
+            ROOM_HEIGHT
         );
 
         this.physics.world.resume();
 
-        // =============================
-        // 背景：ダンジョンの石壁
-        // =============================
-
+        // 背景
         for (let x = 0; x < ROOM_WIDTH; x += 160) {
             const wall = this.add.rectangle(
                 x + 80,
@@ -161,7 +162,6 @@ export default class BossScene extends Phaser.Scene {
             wall.setDepth(-2);
         }
 
-        // 壁の装飾ライン
         this.add.rectangle(
             ROOM_WIDTH / 2,
             105,
@@ -178,7 +178,6 @@ export default class BossScene extends Phaser.Scene {
             0xc7a5ff
         ).setDepth(-1);
 
-        // アリーナの左右の端の柱
         for (const edgeX of [ARENA_LEFT, ARENA_RIGHT]) {
             const pillar = this.add.rectangle(
                 edgeX,
@@ -192,10 +191,7 @@ export default class BossScene extends Phaser.Scene {
             pillar.setDepth(-1);
         }
 
-        // =============================
         // 床
-        // =============================
-
         const ground = this.add.rectangle(
             ROOM_WIDTH / 2,
             580,
@@ -205,17 +201,11 @@ export default class BossScene extends Phaser.Scene {
         );
 
         ground.setStrokeStyle(3, 0x81749a);
-
         this.physics.add.existing(ground, true);
 
-        // =============================
-        // 浮遊足場(4つ。ボスを中心に左右対称。上段は下段の真上)
-        // =============================
-
+        // 浮遊足場
         const platforms = [];
-
-        const platformData = [
-        ];
+        const platformData = [];
 
         for (const p of platformData) {
             const platform = this.add.rectangle(
@@ -227,33 +217,25 @@ export default class BossScene extends Phaser.Scene {
             );
 
             platform.setStrokeStyle(3, 0x25232d);
-
             this.physics.add.existing(platform, true);
-
             platforms.push(platform);
         }
 
-        // =============================
-        // ボス：アリーナ中央に配置(床の上端は y=560)
-        // =============================
-
+        // ボス
         this.boss = new BossEnemy(this, BOSS_X, 560, {
             texture: "boss",
-            maxHp: 1000 // BossHp
+            maxHp: 1000,
         });
 
-        // HPバーの表示位置（画面固定）
         this.bossHpBarX = 200;
         this.bossHpBarY = 82;
         this.bossHpBarWidth = 400;
         this.bossHpBarHeight = 16;
 
-        // HPバーを描画するGraphics
         this.bossHpGraphics = this.add.graphics()
             .setScrollFactor(0)
             .setDepth(25);
 
-        // ボスHPのテキスト
         this.bossHpText = this.add.text(
             400,
             103,
@@ -261,14 +243,13 @@ export default class BossScene extends Phaser.Scene {
             {
                 fontSize: "14px",
                 color: "#ffffff",
-                fontStyle: "bold"
+                fontStyle: "bold",
             }
         )
             .setOrigin(0.5, 0)
             .setScrollFactor(0)
             .setDepth(25);
 
-        // ボス名
         this.add.text(
             BOSS_X,
             220,
@@ -276,106 +257,78 @@ export default class BossScene extends Phaser.Scene {
             {
                 fontSize: "28px",
                 color: "#ff7799",
-                fontStyle: "bold"
+                fontStyle: "bold",
             }
         ).setOrigin(0.5).setDepth(6);
-        this.guestHit = this.add.rectangle(0, 0, 10, 10, 0xffffff, 0.35).setVisible(false).setDepth(6);
-        // =============================
-        // 2人分の開始位置(ボスを挟んで左右)
-        // =============================
 
-        // 下段の足場の外側(足場の真下に出ないように)
+        this.guestHit = this.add
+            .rectangle(0, 0, 10, 10, 0xffffff, 0.35)
+            .setVisible(false)
+            .setDepth(6);
+
+        // プレイヤーの開始位置
         const spawn1X = BOSS_X - 345;
         const spawn2X = BOSS_X + 345;
 
-        // 位置の目印
-        this.add.circle(
-            spawn1X, 555, 14, 0x66aaff, 0.85
-        );
+        this.add.circle(spawn1X, 555, 14, 0x66aaff, 0.85);
+        this.add.circle(spawn2X, 555, 14, 0xffcc66, 0.85);
 
-        this.add.circle(
-            spawn2X, 555, 14, 0xffcc66, 0.85
-        );
+        this.add.text(spawn1X, 530, "PLAYER 1", {
+            fontSize: "16px",
+            color: "#66aaff",
+        }).setOrigin(0.5);
 
-        this.add.text(
-            spawn1X, 530,
-            "PLAYER 1",
-            {
-                fontSize: "16px",
-                color: "#66aaff"
-            }
-        ).setOrigin(0.5);
+        this.add.text(spawn2X, 530, "PLAYER 2", {
+            fontSize: "16px",
+            color: "#ffcc66",
+        }).setOrigin(0.5);
 
-        this.add.text(
-            spawn2X, 530,
-            "PLAYER 2",
-            {
-                fontSize: "16px",
-                color: "#ffcc66"
-            }
-        ).setOrigin(0.5);
-
-        // ルーム作成者(host)と参加者(guest)で開始位置を分ける
         const role = this.registry.get("worldRole") ?? "host";
         this.role = role;
         this.syncCount = 0;
-        this.remoteSeen = false;   // 相手の動きが届いたか(1人だけのときは false のまま)
+        this.remoteSeen = false;
         this.spectating = false;
 
-        const spawnX = role === "guest"
-            ? spawn2X
-            : spawn1X;
+        const spawnX = role === "guest" ? spawn2X : spawn1X;
 
-        // 自分のキャラクター
-        this.player = new Fighter(
-            this,
-            spawnX,
-            520,
-            {
-                color: role === "guest" ? 0xffcc66 : 0x66aaff,
-                texture: "player"
-            }
-        );
+        this.player = new Fighter(this, spawnX, 520, {
+            color: role === "guest" ? 0xffcc66 : 0x66aaff,
+            texture: "player",
+        });
 
-        // 相手のキャラクター(表示専用。ホストのボスは、これも狙う)
         this.remote = new Fighter(
             this,
             role === "guest" ? spawn1X : spawn2X,
             520,
             {
                 color: role === "guest" ? 0x66aaff : 0xffcc66,
-                texture: "player"
+                texture: "player",
             }
         );
+
         this.remote.remote = true;
         this.remote.body.setAllowGravity(false);
         this.remote.body.setImmovable(true);
 
-        // 相手の動きが届くまでは、見せない
         this.remote.view.setAlpha(0);
         this.remote.sprite.setAlpha(0);
 
-        // =============================
-        // 通信(ホストとゲストでボスと戦いを合わせる)
-        // =============================
-
-        // 受信の登録(シーンを抜けるときに外す)
+        // Socket.IO 受信処理
         const on = (ev, fn) => {
             socket.on(ev, fn);
             this.events.once("shutdown", () => socket.off(ev, fn));
         };
 
-        // 相手の動き
         on("boss1player", (d) => {
             if (!this.remoteSeen) {
                 this.remoteSeen = true;
                 this.remote.view.setAlpha(1);
                 this.remote.sprite.setAlpha(1);
             }
+
             this.remote.applySyncData(d);
         });
 
-        // 相手が抜けたら、見えなくする(やり直しの判定にも使う)
         on("playerLeft", () => {
             this.remoteSeen = false;
             this.remote.view.setAlpha(0);
@@ -383,9 +336,10 @@ export default class BossScene extends Phaser.Scene {
         });
 
         if (role === "guest") {
-            // ホストのボスの状態を受け取って表示する
-            socket.on("boss1togest", (d) => {
+            // ホストのボス状態と左右の衝撃波を受信
+            on("boss1togest", (d) => {
                 const b = this.boss;
+
                 b.sprite.x = d.x;
                 b.sprite.y = d.y;
                 b.facing = d.facing;
@@ -395,51 +349,70 @@ export default class BossScene extends Phaser.Scene {
                 b.aim = d.aim;
                 b.flashLeft = d.flash;
                 b.hp = d.hp;
-                 if (d.hit) this.guestHit.setVisible(true).setPosition(d.hit.x, d.hit.y).setSize(d.hit.w, d.hit.h);
-else this.guestHit.setVisible(false);
+
+                if (d.hit) {
+                    this.guestHit
+                        .setVisible(true)
+                        .setPosition(d.hit.x, d.hit.y)
+                        .setSize(d.hit.w, d.hit.h);
+                } else {
+                    this.guestHit.setVisible(false);
+                }
+
+                // 左右の衝撃波を同期
+                b.syncShockwaves(d.shockwaves);
             });
-            if (data.hit) this.guestHitBox.setVisible(true).setPosition(data.hit.x, data.hit.y).setSize(data.hit.w, data.hit.h);
-                else this.guestHitBox.setVisible(false);
-            // ボスの攻撃が当たった知らせ:自分のキャラに、自分の画面で当てる(パリィ・回避もここで判定)
+
+            // ホストの攻撃が当たった知らせ
             on("boss1hit", ({ attack }) => {
                 const a = BOSS_ATTACKS[attack];
-                if (a && this.player.state !== S.DEAD) this.player.receiveHit(this.boss, a);
+
+                if (a && this.player.state !== S.DEAD) {
+                    this.player.receiveHit(this.boss, a);
+                }
             });
-           
-            // 自分の攻撃がボスに当たったら、ホストに知らせる(ダメージはホストが決める)
+
+            // ゲストの攻撃がボスに当たったらホストへ知らせる
             this.boss.mirror = true;
             this.boss.onMirrorHit = (attacker) => {
-                socket.emit("boss1damage", { key: attacker.attackKey });
+                socket.emit("boss1damage", {
+                    key: attacker.attackKey,
+                });
             };
         }
 
         if (role === "host") {
-            // ホストのボスが、ゲストのキャラに当てた:ゲストに知らせる
+            // ボスの攻撃がゲストに当たったらゲストへ知らせる
             this.remote.onRemoteHit = (attacker, a) => {
-                const name = Object.keys(BOSS_ATTACKS).find((k) => BOSS_ATTACKS[k] === a);
-                if (name) socket.emit("boss1hit", { attack: name });
+                const name = Object.keys(BOSS_ATTACKS).find(
+                    (k) => BOSS_ATTACKS[k] === a
+                );
+
+                if (name) {
+                    socket.emit("boss1hit", { attack: name });
+                }
             };
 
-            // ゲストの攻撃が当たった:ホストのボスにダメージを入れる
+            // ゲストの攻撃がボスに当たった
             on("boss1damage", ({ key }) => {
                 const a = ATTACKS[key];
-                if (a) this.boss.receiveHit(this.remote, a);
+
+                if (a) {
+                    this.boss.receiveHit(this.remote, a);
+                }
             });
 
-            // ゲストがパリィした:ホストのボスをスタンさせる
+            // ゲストがパリィした
             on("boss1parry", () => {
                 this.boss.stun(PARRY.enemyStun);
-                this.events.emit("parry", this.remote, this.boss);   // 「PARRY!」の表示用
+                this.events.emit("parry", this.remote, this.boss);
             });
         }
 
         // 地面の当たり判定
-        this.physics.add.collider(
-            this.player.sprite,
-            ground
-        );
+        this.physics.add.collider(this.player.sprite, ground);
 
-        // 足場は上からのみ着地できる
+        // 足場は上からのみ着地可能
         for (const platform of platforms) {
             this.physics.add.collider(
                 this.player.sprite,
@@ -453,8 +426,7 @@ else this.guestHit.setVisible(false);
                         return false;
                     }
 
-                    const previousBottom =
-                        body.prev.y + body.height;
+                    const previousBottom = body.prev.y + body.height;
 
                     return (
                         body.velocity.y >= 0 &&
@@ -464,45 +436,35 @@ else this.guestHit.setVisible(false);
             );
         }
 
-        // カメラ:ボスを中心に始まり、そのあとは自分を追う
-        // (範囲はアリーナの内側に制限されているので、ボスは常に近くに見える)
         this.cameras.main.startFollow(
             this.player.sprite,
             true,
             0.1,
             0.1
         );
+
         this.cameras.main.centerOn(BOSS_X, 300);
 
-        // 画面に固定するタイトル
-        this.add.text(
-            400, 12,
-            "THE SEALED CHAMBER",
-            {
-                fontSize: "22px",
-                color: "#ffffff",
-                fontStyle: "bold"
-            }
-        )
+        this.add.text(400, 12, "THE SEALED CHAMBER", {
+            fontSize: "22px",
+            color: "#ffffff",
+            fontStyle: "bold",
+        })
             .setOrigin(0.5, 0)
             .setScrollFactor(0)
             .setDepth(20);
 
-        this.add.text(
-            400, 44,
-            "協力ボス戦エリア",
-            {
-                fontSize: "16px",
-                color: "#d4c4e5"
-            }
-        )
+        this.add.text(400, 44, "協力ボス戦エリア", {
+            fontSize: "16px",
+            color: "#d4c4e5",
+        })
             .setOrigin(0.5, 0)
             .setScrollFactor(0)
             .setDepth(20);
 
-        // ダンジョンへ戻るボタン
         const backButton = this.add.text(
-            115, 35,
+            115,
+            35,
             "← ダンジョンへ戻る",
             {
                 fontSize: "16px",
@@ -512,8 +474,8 @@ else this.guestHit.setVisible(false);
                     left: 10,
                     right: 10,
                     top: 8,
-                    bottom: 8
-                }
+                    bottom: 8,
+                },
             }
         )
             .setOrigin(0.5)
@@ -522,22 +484,17 @@ else this.guestHit.setVisible(false);
             .setInteractive({ useHandCursor: true });
 
         backButton.on("pointerover", () => {
-            backButton.setStyle({
-                backgroundColor: "#665078"
-            });
+            backButton.setStyle({ backgroundColor: "#665078" });
         });
 
         backButton.on("pointerout", () => {
-            backButton.setStyle({
-                backgroundColor: "#44354f"
-            });
+            backButton.setStyle({ backgroundColor: "#44354f" });
         });
 
         backButton.on("pointerdown", () => {
             this.scene.start("GameScene");
         });
 
-        // プレイヤーのHUD
         this.playerHud = this.add.graphics()
             .setScrollFactor(0)
             .setDepth(25);
@@ -546,25 +503,30 @@ else this.guestHit.setVisible(false);
         const onParry = (f) => {
             this.popText(f.sprite.x, f.sprite.y - 50, "PARRY!");
             this.cameras.main.shake(100, FX.parryShake);
-            // ゲストが自分でパリィしたら、ホストに知らせる(ホストのボスをスタンさせるため)
-            if (role === "guest" && f === this.player) socket.emit("boss1parry");
+
+            if (role === "guest" && f === this.player) {
+                socket.emit("boss1parry");
+            }
         };
+
         const onHit = (victim, attacker, atk) => {
             this.cameras.main.shake(100, atk.shake ?? 0);
         };
+
         const onBossDead = () => {
             console.log("ボスを撃破しました！");
         };
+
         this.events.on("parry", onParry);
         this.events.on("hit", onHit);
         this.events.on("bossdead", onBossDead);
+
         this.events.once("shutdown", () => {
             this.events.off("parry", onParry);
             this.events.off("hit", onHit);
             this.events.off("bossdead", onBossDead);
         });
 
-        // 入力
         this.keys = this.input.keyboard.addKeys(
             "A,D,W,LEFT,RIGHT,UP,SPACE,J,K,L,SHIFT"
         );
@@ -579,12 +541,11 @@ else this.guestHit.setVisible(false);
         const J = Phaser.Input.Keyboard.JustDown;
 
         if (J(k.W) || J(k.UP)) this.pending.jump = true;
-
         if (J(k.J)) this.pending.sword = true;
         if (J(k.K)) this.pending.fist = true;
         if (J(k.L)) this.pending.parry = true;
         if (J(k.SHIFT) || J(k.SPACE)) this.pending.dodge = true;
-    };
+    }
 
     update(_, delta) {
         this.readKeys();
@@ -599,6 +560,7 @@ else this.guestHit.setVisible(false);
         this.player.render();
         this.remote.render();
         this.boss.render();
+
         this.updateBossHpBar();
         this.drawPlayerHud();
     }
@@ -617,36 +579,48 @@ else this.guestHit.setVisible(false);
             parry: false,
             dodge: false,
 
-            ...this.pending
+            ...this.pending,
         };
 
         this.pending = {};
 
-        // プレイヤーの攻撃はボスに当たる
         this.player.tick(input, [this.boss]);
 
         this.syncCount++;
         const send = this.syncCount % SYNC_EVERY === 0;
 
-        // ボスを動かすのはホストだけ。相手が来ていなければ、自分だけを狙う
+        // ボスを動かすのはホストだけ
         if (this.role === "host") {
-            const targets = this.remoteSeen ? [this.player, this.remote] : [this.player];
+            const targets = this.remoteSeen
+                ? [this.player, this.remote]
+                : [this.player];
+
             this.boss.tick(targets);
-            if (send) socket.emit("boss1host", this.boss.getSyncData());
+
+            if (send) {
+                // サーバー側で guest に転送する既存イベント名
+                socket.emit("boss1host", this.boss.getSyncData());
+            }
         }
 
-        // 自分の動きを、相手へ送る
-        if (send) socket.emit("boss1player", this.player.getSyncData());
+        if (send) {
+            socket.emit("boss1player", this.player.getSyncData());
+        }
 
-        // 片方が倒れても、もう片方が倒れるまでは続ける。2人とも倒れたらやり直す
         const iDead = this.player.state === S.DEAD;
         const otherDead = !this.remoteSeen || this.remote.state === S.DEAD;
 
         if (iDead && !otherDead && !this.spectating) {
-            // 倒れたら、生きている相手を見る
             this.spectating = true;
-            this.cameras.main.startFollow(this.remote.sprite, true, 0.1, 0.1);
+
+            this.cameras.main.startFollow(
+                this.remote.sprite,
+                true,
+                0.1,
+                0.1
+            );
         }
+
         if (iDead && otherDead && !this.restarting) {
             this.restarting = true;
             this.time.delayedCall(1500, () => this.scene.restart());
