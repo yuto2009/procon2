@@ -238,10 +238,10 @@ export default class BossScene extends Phaser.Scene {
         // =============================
         // ボス：アリーナ中央に配置(床の上端は y=560)
         // =============================
-
+        
         this.boss = new BossEnemy(this, BOSS_X, 560, {
             texture: "boss",
-            maxHp: 1000
+            maxHp: 1000 // BossHp
         });
 
         // HPバーの表示位置（画面固定）
