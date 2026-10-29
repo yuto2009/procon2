@@ -103,7 +103,7 @@ export const BS = {
     TIRED: "tired",     // 連続ダッシュのあとの疲労
 };
 
-const IDLE_WAIT = 90;   // 攻撃の間の待ち時間(フレーム)
+const IDLE_WAIT = 60;   // 攻撃の間の待ち時間(フレーム)
 const AGGRO = 260;      // この距離より遠いと「遠い」扱い。近いときだけ斬りを出す(px)
 
 export default class BossEnemy {
