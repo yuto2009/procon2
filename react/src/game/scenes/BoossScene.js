@@ -1,9 +1,8 @@
-
 import Phaser from "phaser";
 import Fighter, { S } from "../combat/Fighter";
 import { FPS, STAMINA, FX, ATTACKS, PARRY } from "../combat/frameData";
-import BossEnemy, { BOSS_ATTACKS } from "../combat/BossEnemy";
 import { createProgress, statsFor, grantXp, xpToNext, MAX_LEVEL } from "../combat/progress";
+import { getBossClass } from "../combat/bossRegistry";
 
 const socket = window.socket;
 const STEP = 1000 / FPS;
@@ -12,6 +11,11 @@ const SYNC_EVERY = 1;
 export default class BossScene extends Phaser.Scene {
     constructor() {
         super("BossScene");
+    }
+
+    // どのボスと戦うか (registry の "bossType"。未指定なら boss1)
+    get bossType() {
+        return this.registry.get("bossType") ?? "boss1";
     }
 
     updateBossHpBar() {
@@ -106,22 +110,8 @@ export default class BossScene extends Phaser.Scene {
             { frameWidth: 96, frameHeight: 32 }
         );
 
-        this.load.image("boss", "/assets/bossenemy1.png");
-        this.load.image("boss_stance", "/assets/boss1attackwait.png");
-        this.load.image("boss_swing", "/assets/boss1attack.png");
-        this.load.image("boss_dash", "/assets/boss1dash.png");
-        this.load.image("boss_dashattack", "/assets/boss1dashattack.png");
-        this.load.image("boss_footattack", "/assets/boss1footattack.png");
-        this.load.image("boss_footwait", "/assets/boss1footwait.png");
-
-        // 突き刺し攻撃と衝撃波の画像
-        this.load.image("boss_thrustwait", "/assets/boss1thrustwait.png");
-        this.load.image("boss_thrustattack", "/assets/boss1thrustattack.png");
-        this.load.image("boss_shockwave", "/assets/boss1slash.png");
-
-        this.load.image("boss_stun", "/assets/boss1stun.png");
-        this.load.image("boss_parystun", "/assets/boss1parystun.png");
-        this.load.image("boss_dead", "/assets/boss1slaied.png");
+        // ボスの画像は各ボスクラスが読み込む
+        getBossClass(this.bossType).preload(this);
     }
 
     create() {
@@ -224,11 +214,9 @@ export default class BossScene extends Phaser.Scene {
             platforms.push(platform);
         }
 
-        // ボス
-        this.boss = new BossEnemy(this, BOSS_X, 560, {
-            texture: "boss",
-            maxHp: 1000,
-        });
+        // ボス (種類は registry の bossType で決まる)
+        const BossClass = getBossClass(this.bossType);
+        this.boss = new BossClass(this, BOSS_X, 560);
 
         this.bossHpBarX = 200;
         this.bossHpBarY = 82;
@@ -253,10 +241,11 @@ export default class BossScene extends Phaser.Scene {
             .setScrollFactor(0)
             .setDepth(25);
 
+        // ボス名 (クラスに static label があればそれを使う)
         this.add.text(
             BOSS_X,
             220,
-            "BOSS1",
+            BossClass.label ?? this.bossType.toUpperCase(),
             {
                 fontSize: "28px",
                 color: "#ff7799",
@@ -349,19 +338,9 @@ export default class BossScene extends Phaser.Scene {
         });
 
         if (role === "guest") {
-            // ホストのボス状態と左右の衝撃波を受信
+            // ホストのボス状態(衝撃波など独自データ込み)を受信
             on("boss1togest", (d) => {
-                const b = this.boss;
-
-                b.sprite.x = d.x;
-                b.sprite.y = d.y;
-                b.facing = d.facing;
-                b.state = d.state;
-                b.attack = BOSS_ATTACKS[d.attack] ?? null;
-                b.frame = d.frame;
-                b.aim = d.aim;
-                b.flashLeft = d.flash;
-                b.hp = d.hp;
+                this.boss.applySyncData(d);
 
                 if (d.hit) {
                     this.guestHit
@@ -371,14 +350,11 @@ export default class BossScene extends Phaser.Scene {
                 } else {
                     this.guestHit.setVisible(false);
                 }
-
-                // 左右の衝撃波を同期
-                b.syncShockwaves(d.shockwaves);
             });
 
             // ホストの攻撃が当たった知らせ
             on("boss1hit", ({ attack }) => {
-                const a = BOSS_ATTACKS[attack];
+                const a = this.boss.attacks[attack];
 
                 if (a && this.player.state !== S.DEAD) {
                     this.player.receiveHit(this.boss, a);
@@ -397,8 +373,9 @@ export default class BossScene extends Phaser.Scene {
         if (role === "host") {
             // ボスの攻撃がゲストに当たったらゲストへ知らせる
             this.remote.onRemoteHit = (attacker, a) => {
-                const name = Object.keys(BOSS_ATTACKS).find(
-                    (k) => BOSS_ATTACKS[k] === a
+                const attacks = this.boss.attacks;
+                const name = Object.keys(attacks).find(
+                    (k) => attacks[k] === a
                 );
 
                 if (name) {
