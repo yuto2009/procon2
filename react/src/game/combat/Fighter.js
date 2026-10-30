@@ -332,22 +332,29 @@ export default class Fighter {
             return;
         }
 
-        this.hp -= a.damage;
+        // 変更前: this.hp -= a.damage;
+        const damage = Math.round(a.damage * (attacker.damageMul ?? 1));
+        this.hp -= damage;
 
-        const dir =
-            Math.sign(this.sprite.x - attacker.sprite.x) || 1;
-
+        const dir = Math.sign(this.sprite.x - attacker.sprite.x) || 1;
         this.body.setVelocityX(dir * a.knockback);
         this.flashLeft = FX.flashFrames;
-
         this.scene.events.emit("hit", this, attacker, a);
-
         if (this.hp <= 0) {
             this.hp = 0;
             this.enter(S.DEAD);
+            this.scene.events.emit("kill", this, attacker);   // ← 追加
         } else {
             this.stun(a.hitstun);
         }
+    }
+
+    // レベルアップ時に能力値を反映する
+    applyStats({ maxHp, damageMul }) {
+        const increase = Math.max(0, maxHp - this.maxHp);
+        this.maxHp = maxHp;
+        this.damageMul = damageMul;
+        this.hp = Math.min(this.maxHp, this.hp + increase); // 増えた分だけ回復
     }
 
     stun(frames) {
@@ -426,7 +433,7 @@ export default class Fighter {
         } else if (this.state === S.PARRY) {
             color =
                 this.frame >= PARRY.delay &&
-                this.frame <= PARRY.delay + PARRY.window
+                    this.frame <= PARRY.delay + PARRY.window
                     ? 0x33ffff
                     : 0x338888;
         } else if (this.state === S.STUN) {

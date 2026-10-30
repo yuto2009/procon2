@@ -3,6 +3,7 @@ import Phaser from "phaser";
 import Fighter, { S } from "../combat/Fighter";
 import { FPS, STAMINA, FX, ATTACKS, PARRY } from "../combat/frameData";
 import BossEnemy, { BOSS_ATTACKS } from "../combat/BossEnemy";
+import { createProgress, statsFor, grantXp, xpToNext, MAX_LEVEL } from "../combat/progress";
 
 const socket = window.socket;
 const STEP = 1000 / FPS;
@@ -33,8 +34,8 @@ export default class BossScene extends Phaser.Scene {
 
         const color =
             ratio > 0.5 ? 0xe83e65 :
-            ratio > 0.25 ? 0xffa52f :
-            0xff3333;
+                ratio > 0.25 ? 0xffa52f :
+                    0xff3333;
 
         if (ratio > 0) {
             g.fillStyle(color, 1);
@@ -75,15 +76,17 @@ export default class BossScene extends Phaser.Scene {
 
         bar(20, 560, 220, 18, this.player.hp / this.player.maxHp, 0x44cc66);
         bar(20, 582, 220, 12, this.player.stamina / STAMINA.max, 0xffcc33);
+        const p = this.registry.get("progress");
+        const need = xpToNext(p.level);
+        bar(20, 600 - 4, 220, 4, p.level >= MAX_LEVEL ? 1 : p.xp / need, 0x66aaff);
+        this.levelText.setText(
+            p.level >= MAX_LEVEL ? `Lv ${p.level} MAX` : `Lv ${p.level}  ${p.xp}/${need}`
+        );
     }
 
-    popText(x, y, msg) {
+    popText(x, y, msg, color = "#66ffff") {
         const t = this.add
-            .text(x, y, msg, {
-                fontSize: "24px",
-                color: "#66ffff",
-                fontStyle: "bold",
-            })
+            .text(x, y, msg, { fontSize: "24px", color, fontStyle: "bold" })
             .setOrigin(0.5)
             .setDepth(40);
 
@@ -291,9 +294,19 @@ export default class BossScene extends Phaser.Scene {
 
         const spawnX = role === "guest" ? spawn2X : spawn1X;
 
+        // 進行状況(レベル・経験値)を読み込む。無ければ新規作成
+        let progress = this.registry.get("progress");
+        if (!progress) {
+            progress = createProgress();
+            this.registry.set("progress", progress);
+        }
+        const stats = statsFor(progress.level);
+
         this.player = new Fighter(this, spawnX, 520, {
             color: role === "guest" ? 0xffcc66 : 0x66aaff,
             texture: "player",
+            maxHp: stats.maxHp,
+            damageMul: stats.damageMul,
         });
 
         this.remote = new Fighter(
@@ -498,7 +511,9 @@ export default class BossScene extends Phaser.Scene {
         this.playerHud = this.add.graphics()
             .setScrollFactor(0)
             .setDepth(25);
-
+        this.levelText = this.add.text(20, 538, "", {
+            fontSize: "16px", color: "#ffee66", fontStyle: "bold",
+        }).setScrollFactor(0).setDepth(25);
         // パリィ・被弾の演出
         const onParry = (f) => {
             this.popText(f.sprite.x, f.sprite.y - 50, "PARRY!");
@@ -514,7 +529,8 @@ export default class BossScene extends Phaser.Scene {
         };
 
         const onBossDead = () => {
-            console.log("ボスを撃破しました！");
+            console.log("ボスを撃破しました!");
+            grantXp(this, this.player, 300);
         };
 
         this.events.on("parry", onParry);

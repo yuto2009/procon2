@@ -2,6 +2,7 @@ import Phaser from "phaser";
 import Fighter, { S } from "../combat/Fighter";
 import { FPS, STAMINA, FX } from "../combat/frameData";
 import { createTuningPanel } from "../debug/TuningPanel";
+import { createProgress, statsFor, grantXp, xpToNext, MAX_LEVEL } from "../combat/progress";
 const STEP = 1000 / FPS;
 // マップ生成用の基本設定
 const TILE_SIZE = 32;
@@ -123,11 +124,18 @@ export default class GameScene extends Phaser.Scene {
     }
 
     create() {
+        // 進行状況(レベル・経験値)。無ければ新規作成
+        let progress = this.registry.get("progress");
+        if (!progress) {
+            progress = createProgress();
+            this.registry.set("progress", progress);
+        }
+        const stats = statsFor(progress.level);
         const myName = this.registry.get("playerName") ?? "PLAYER";
         const LastPosition = this.registry.get("LastPosition");
 
         // マップ全体のサイズ
-        const TOTAL_CHUNKS = 103;
+        const TOTAL_CHUNKS = 8;
         const WORLD_WIDTH = CHUNK_WIDTH * TOTAL_CHUNKS;
         const WORLD_HEIGHT = 600;
 
@@ -469,7 +477,9 @@ export default class GameScene extends Phaser.Scene {
         }
         this.player = new Fighter(this, spawnX, spawnY, {
             color: 0x66aaff,
-            texture: "player"
+            texture: "player",
+            maxHp: stats.maxHp,
+            damageMul: stats.damageMul,
         });
         this.dummy = new Fighter(
             this,
@@ -540,6 +550,9 @@ export default class GameScene extends Phaser.Scene {
         this.add.text(400, 580, "←→/AD:移動  W/Space:ジャンプ  J:剣  K:拳  L:パリィ  Shift:回避", {
             fontSize: "14px", color: "#aaaaaa",
         }).setOrigin(0.5).setScrollFactor(0).setDepth(10);
+        this.levelText = this.add.text(250, 30, "", {
+            fontSize: "16px", color: "#ffee66", fontStyle: "bold",
+        }).setScrollFactor(0).setDepth(10);
 
         const onParry = (f) => {
             this.popText(f.sprite.x, f.sprite.y - 50, "PARRY!");
@@ -552,11 +565,18 @@ export default class GameScene extends Phaser.Scene {
             this.hitVictim = victim;
             this.cameras.main.shake(100, atk.shake ?? 0);
         };
+        const onKill = (victim, attacker) => {
+            if (attacker === this.player && victim === this.dummy) {
+                grantXp(this, this.player, 20);
+            }
+        };
+        this.events.on("kill", onKill);
         this.events.on("parry", onParry);
         this.events.on("hit", onHit);
         this.events.once("shutdown", () => {
             this.events.off("parry", onParry);
             this.events.off("hit", onHit);
+            this.events.off("kill", onKill);
         });
         this.tuning = createTuningPanel();
         this.input.keyboard.on("keydown-T", () => this.tuning.toggle());
@@ -571,6 +591,7 @@ export default class GameScene extends Phaser.Scene {
         this.events.once("shutdown", () => {
             this.socket.off("playeraction", this.onPlayerAction);
         });
+        this.input.keyboard.on("keydown-X", () => grantXp(this, this.player, 100));
     }
 
     // 押した瞬間を取りこぼさないよう、毎描画フレームで拾ってためておく
@@ -819,10 +840,21 @@ export default class GameScene extends Phaser.Scene {
         bar(20, 30, 220, 18, this.player.hp / this.player.maxHp, 0x44cc66);
         bar(20, 54, 220, 12, this.player.stamina / STAMINA.max, 0xffcc33);
         bar(560, 30, 220, 18, this.dummy.hp / this.dummy.maxHp, 0xcc4444);
+        const p = this.registry.get("progress");
+        const need = xpToNext(p.level);
+        bar(20, 70, 220, 8, p.level >= MAX_LEVEL ? 1 : p.xp / need, 0x66aaff);
+        this.levelText.setText(
+            p.level >= MAX_LEVEL ? `Lv ${p.level} MAX` : `Lv ${p.level}  ${p.xp}/${need}`
+        );
     }
 
-    popText(x, y, msg) {
-        const t = this.add.text(x, y, msg, { fontSize: "24px", color: "#66ffff", fontStyle: "bold" }).setOrigin(0.5);
-        this.tweens.add({ targets: t, y: y - 40, alpha: 0, duration: 600, onComplete: () => t.destroy() });
+    popText(x, y, msg, color = "#66ffff") {
+        const t = this.add.text(x, y, msg, {
+            fontSize: "24px", color, fontStyle: "bold",
+        }).setOrigin(0.5).setDepth(40);
+        this.tweens.add({
+            targets: t, y: y - 40, alpha: 0, duration: 600,
+            onComplete: () => t.destroy(),
+        });
     }
 }
