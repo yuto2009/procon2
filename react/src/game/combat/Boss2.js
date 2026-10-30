@@ -6,9 +6,12 @@ const WALK_SPEED = 2;          // 歩く速さ(px/フレーム)
 const CLOSE_RANGE = 170;       // この距離以内=近距離、それより遠い=遠距離
 
 // 遠距離で選ぶ攻撃の割合(合計1)
-const FAR_BLOCK_CHANCE = 0.4;  // 氷塊
-const FAR_SHOCK_CHANCE = 0.2;  // つらら
-// 残り(0.4)は氷の剣
+const FAR_BLOCK_CHANCE = 0.5;  // 氷塊系(選択後、さらに3種類から均等抽選)
+const FAR_RAIN_CHANCE = 0.3;   // 相手の頭上に追尾する氷の剣
+const FAR_SHOCK_CHANCE = 0.2; // 通常のiceShock
+
+// 近距離では通常iceShockを優先し、残りをバックステップ攻撃にする
+const CLOSE_SHOCK_CHANCE = 0.5;
 
 // バックステップ攻撃(近距離)
 const BACKSTEP_SPEED = 6;
@@ -20,17 +23,33 @@ const BIG_BLOCK_COUNTS = [4, 5];      // 降らせる大きい氷塊の数(ど�
 const BLOCK_STAGGER = 12;             // 氷塊が降り始める間隔(フレーム)
 const BLOCK_FALL_GRAVITY = 0.5;
 const BLOCK_FALL_MAX = 14;
-const BLOCK_TRACK_SPEED = 3;          // 落ちながら相手を追う横の速さ(px/フレーム)
-const BLOCK_LOCK_HEIGHT = 100;        // 地面からこの高さまで来たら追尾をやめる
+const BLOCK_PREDICT_FRAMES = 55;      // 氷塊が地面に届くまでの予測フレーム
 const SMALL_COUNT = 4;                // 着地で出る小さい氷塊の数
 const SMALL_GRAVITY = 0.4;
 
-// つらら(iceshock)
-const ICICLE_MAX = 30;                // 生やす本数の上限(通常は闘技場の端まで出る)
-const ICICLE_SPACING = 70;            // つらら同士の間隔(px)
-const ICICLE_STAGGER = 5;             // 生えるタイミングの間隔(フレーム)
-const ICICLE_LIFE = 40;               // 生えている時間(フレーム)
-const ICICLE_RISE = 6;                // 伸びるまでの時間(フレーム)。この間は当たらない
+// 通常iceShock: ボスの左右からステージ端へ走る氷柱
+const ICICLE_MAX = 30;                 // 左右それぞれの最大本数
+const ICICLE_SPACING = 70;             // 氷柱同士の間隔(px)
+const ICICLE_STAGGER = 5;              // ボスから外へ向かって5フレームずつ遅れて発生
+const ICICLE_LIFE = 40;                // 発生後に消えるまでのフレーム
+const ICICLE_RISE = 6;                 // 地面から伸びるまでのフレーム
+
+// 氷塊落としの追加攻撃②専用: 相手の足元に氷柱を連続発生させる
+// 次の柱が出ると前の柱が沈み、さらに次が出ると古い柱を消す。
+const BLOCK_TRACK_COUNT = 9;
+const BLOCK_TRACK_INTERVAL = 14;       // 14フレーム間隔
+const BLOCK_TRACK_RISE = 12;           // 伸びている間は相手の足元を追尾
+const BLOCK_TRACK_SINK = 5;            // 沈み始めてから5フレームで沈みきる
+
+// ボスの近くに浮かべて1本ずつ撃つ剣
+const BOSS_SWORD_COUNT = 5;
+const BOSS_SWORD_INTERVAL = 18;
+const BOSS_SWORD_HOVER = 12;
+const BOSS_SWORD_POSITIONS = [
+    [-72, 105], [72, 145], [-48, 185], [48, 125], [0, 210],
+];
+
+// 地面から生える氷柱の共通設定
 
 // 氷の剣6本(頭上に浮かせる)
 const HOVER_OFFSETS = [-100, -60, -20, 20, 60, 100]; // 頭上での横位置
@@ -69,14 +88,29 @@ export const BOSS2_ATTACKS = {
         ...NONE,
     },
 
-    // 遠距離: 氷塊(上から降らせる)
+    // 氷塊系1: 氷塊を上から降らせる
     iceBlock: {
         noBody: true, block: true,
         startup: 36, active: 20, recovery: 50,
         ...NONE,
     },
 
-    // 遠距離: つらら(地面から相手へ向かって連続で生える)
+    // 氷塊系2: 相手の足元を追尾しながら14フレーム間隔で氷柱を連続発生。
+    // 次の柱が出ると前の柱は沈み、さらに次の柱が出ると古い柱は消える。
+    iceBlockWave: {
+        noBody: true, block: true, blockWave: true,
+        startup: 36, active: 20, recovery: 50,
+        ...NONE,
+    },
+
+    // 氷塊系3: ボスの近くに剣を浮かせ、1本ずつ発射
+    iceBlockSwords: {
+        noBody: true, block: true, blockSwords: true,
+        startup: 36, active: 20, recovery: 50,
+        ...NONE,
+    },
+
+    // 通常iceShock: ボスの左右からステージ端へ向かって氷柱を走らせる。
     iceShock: {
         noBody: true, shock: true,
         startup: 30, active: 45, recovery: 30,
@@ -134,7 +168,8 @@ const VIEW = {
     sword:  { key: "boss2_icesword",      w: 48,  h: 90,  originY: 0.5 },
     big:    { key: "boss2_iceblock",      w: 110, h: 110, originY: 0.5 },
     small:  { key: "boss2_smalliceblock", w: 44,  h: 44,  originY: 0.5 },
-    icicle: { key: "boss2_icicle",        w: 50,  h: 110, originY: 1 },
+    icicle: { key: "boss2_icicle",          w: 50,  h: 110, originY: 1 },
+    blockTrackIcicle: { key: "boss2_icicle",  w: 50,  h: 110, originY: 1 },
 };
 
 function blankProj() {
@@ -147,9 +182,14 @@ function blankProj() {
         rot: 0,
         age: 0,             // 出てからの経過フレーム
         delay: 0,           // 出現までの待ち(フレーム)
-        hovering: false,    // 剣: 頭上に浮いている間 true
+        hovering: false,    // 剣: 浮いている間 true
+        bossHover: false,   // 剣: ボスの近くに浮いている場合 true
         launchIn: 0,        // 剣: 発射までの残りフレーム
-        target: null,       // 剣: 追従する相手
+        sinking: false,     // 波状氷柱: 地面に沈んでいる間 true
+        sinkAge: 0,         // 波状氷柱: 沈み始めてからのフレーム
+        blockTrackId: 0,           // 氷塊派生氷柱: 同じ連続攻撃を識別
+        blockTrackIndex: 0,        // 氷塊派生氷柱: 何本目か
+        target: null,       // 剣・追尾氷柱: 追従する相手
         offX: 0, offY: 0,   // 剣: 頭上での位置
         traveled: 0,
         hitSet: new Set(),
@@ -200,9 +240,31 @@ export default class Boss2 extends BaseBoss {
                 .setDepth(7)
                 .setVisible(false)
         );
+
+        // 攻撃判定を白く薄く表示する(プレイヤーが危険範囲を見て回避できるようにする)
+        this.hitboxGraphics = scene.add.graphics().setDepth(8);
+
+        // プレイヤーの直近の移動量から、氷塊の落下先を予測する
+        this.lastPlayerX = new Map();
+        this.playerVelocityX = new Map();
+
+        this.blockTrackSequence = null;
+        this.nextBlockTrackId = 1;
+        this.bossSwordSequence = null;
     }
 
     // ───────── 行動選択 ─────────
+
+    // 氷塊系の3種類を均等に選ぶ。遠距離の50%枠と、
+    // 頭上追尾剣が残っている近距離時の追加行動で共通使用する。
+    chooseIceBlockVariant() {
+        const choices = [
+            BOSS2_ATTACKS.iceBlock,
+            BOSS2_ATTACKS.iceBlockWave,
+            BOSS2_ATTACKS.iceBlockSwords,
+        ];
+        return choices[Math.floor(Math.random() * choices.length)];
+    }
 
     tickIdle(players) {
         const nearest = this.nearestAlive(players);
@@ -220,26 +282,36 @@ export default class Boss2 extends BaseBoss {
 
         if (this.frame <= this.cfg.idleWait) return;
 
+        // 頭上に追尾中の剣が残っているか
+        const hoveringHeadSword = this.projs.some(
+            (p) => p.active && p.kind === "sword" && p.hovering && !p.bossHover
+        );
+
         if (!far) {
-            // 近距離: バックステップ攻撃
-            this.attack = BOSS2_ATTACKS.backstepAttack;
+            if (hoveringHeadSword) {
+                // 頭上の剣が残っていても、近距離で氷塊系の攻撃を使用できる
+                this.attack = this.chooseIceBlockVariant();
+            } else if (Math.random() < CLOSE_SHOCK_CHANCE) {
+                // 近距離対策として通常iceShockも使用する
+                this.attack = BOSS2_ATTACKS.iceShock;
+            } else {
+                this.attack = BOSS2_ATTACKS.backstepAttack;
+            }
         } else {
-            // 遠距離: 氷塊40% / つらら20% / 氷の剣40%
             const r = Math.random();
 
             if (r < FAR_BLOCK_CHANCE) {
-                this.attack = BOSS2_ATTACKS.iceBlock;
-            } else if (r < FAR_BLOCK_CHANCE + FAR_SHOCK_CHANCE) {
-                this.attack = BOSS2_ATTACKS.iceShock;
-            } else {
-                // 前の剣がまだ浮いているときは重ねず、氷塊にする
-                const busy = this.projs.some(
-                    (p) => p.active && p.kind === "sword" && p.hovering
-                );
-
-                this.attack = busy
-                    ? BOSS2_ATTACKS.iceBlock
+                // 氷塊系50%の中で、3種類を均等に選ぶ
+                this.attack = this.chooseIceBlockVariant();
+            } else if (r < FAR_BLOCK_CHANCE + FAR_RAIN_CHANCE) {
+                // 頭上追尾剣は重ねて出さない
+                this.attack = hoveringHeadSword
+                    ? this.chooseIceBlockVariant()
                     : BOSS2_ATTACKS.iceSwordRain;
+            } else if (
+                r < FAR_BLOCK_CHANCE + FAR_RAIN_CHANCE + FAR_SHOCK_CHANCE
+            ) {
+                this.attack = BOSS2_ATTACKS.iceShock;
             }
         }
 
@@ -264,10 +336,19 @@ export default class Boss2 extends BaseBoss {
         const a = this.attack;
         if (this.frame !== 1) return;
 
-        if (a.backstep) this.fireVolley();
-        else if (a.block) this.spawnBlocks(players);
-        else if (a.shock) this.spawnIcicles();
-        else if (a.rain) this.spawnSwordRain(players);
+        if (a.backstep) {
+            this.fireVolley();
+        } else if (a.blockWave) {
+            this.startBlockTrackingSequence(players);
+        } else if (a.blockSwords) {
+            this.startBossSwordSequence(players);
+        } else if (a.block) {
+            this.spawnBlocks(players);
+        } else if (a.shock) {
+            this.spawnIcicles();
+        } else if (a.rain) {
+            this.spawnSwordRain(players);
+        }
     }
 
     // 体の当たり判定がない攻撃(飛び道具だけがダメージ源)
@@ -304,6 +385,8 @@ export default class Boss2 extends BaseBoss {
 
     clearProjs() {
         for (const p of this.projs) p.active = false;
+        this.blockTrackSequence = null;
+        this.bossSwordSequence = null;
     }
 
     hitPlayers(p, players, w, h, cy = p.y) {
@@ -330,6 +413,18 @@ export default class Boss2 extends BaseBoss {
     }
 
     tickExtra(players) {
+        // 1フレームごとの移動量を記録し、氷塊の未来位置予測に使う
+        for (const pl of players) {
+            const previousX = this.lastPlayerX.get(pl);
+            if (previousX !== undefined) {
+                this.playerVelocityX.set(pl, pl.sprite.x - previousX);
+            }
+            this.lastPlayerX.set(pl, pl.sprite.x);
+        }
+
+        this.tickBlockTrackingSequence(players);
+        this.tickBossSwordSequence(players);
+
         for (const p of this.projs) {
             if (!p.active) continue;
 
@@ -353,6 +448,9 @@ export default class Boss2 extends BaseBoss {
                     break;
                 case "icicle":
                     this.tickIcicle(p, players);
+                    break;
+                case "blockTrackIcicle":
+                    this.tickBlockTrackIcicle(p, players);
                     break;
             }
         }
@@ -411,10 +509,72 @@ export default class Boss2 extends BaseBoss {
         });
     }
 
+    // ───────── ボスの近くに浮かせて1本ずつ撃つ剣 ─────────
+
+    startBossSwordSequence(players) {
+        const target = this.pickTarget(players);
+        if (!target) return;
+
+        this.bossSwordSequence = {
+            target,
+            spawned: 0,
+            wait: BOSS_SWORD_INTERVAL + 1,
+        };
+        this.spawnBossSword();
+        if (this.bossSwordSequence) {
+            // startBossSwordSequence と同じフレーム内のtickExtra分を補正
+            this.bossSwordSequence.wait = BOSS_SWORD_INTERVAL + 1;
+        }
+    }
+
+    spawnBossSword() {
+        const state = this.bossSwordSequence;
+        if (!state || state.spawned >= BOSS_SWORD_COUNT) return;
+
+        const [offX, offY] = BOSS_SWORD_POSITIONS[state.spawned];
+        const a = BOSS2_ATTACKS.rainSword;
+
+        this.spawnProj("sword", {
+            a,
+            target: state.target,
+            hovering: true,
+            bossHover: true,
+            launchIn: BOSS_SWORD_HOVER,
+            offX,
+            offY,
+            x: this.sprite.x + offX,
+            y: this.groundY - offY,
+            rot: 0,
+        });
+
+        state.spawned++;
+        state.wait = BOSS_SWORD_INTERVAL;
+
+        if (state.spawned >= BOSS_SWORD_COUNT) {
+            this.bossSwordSequence = null;
+        }
+    }
+
+    tickBossSwordSequence(players) {
+        const state = this.bossSwordSequence;
+        if (!state) return;
+
+        if (!state.target || state.target.hp <= 0) {
+            state.target = this.pickTarget(players);
+            if (!state.target) {
+                this.bossSwordSequence = null;
+                return;
+            }
+        }
+
+        state.wait--;
+        if (state.wait <= 0) this.spawnBossSword();
+    }
+
     tickSword(p, players) {
         const a = p.a;
 
-        // 浮いている間: 相手の頭上についていき、相手の方を向く
+        // 浮いている間: 頭上追尾か、ボスの近くで発射待ち
         if (p.hovering) {
             const t = p.target;
 
@@ -423,9 +583,18 @@ export default class Boss2 extends BaseBoss {
                 return;
             }
 
-            p.x = t.sprite.x + p.offX;
-            p.y = t.sprite.y - HOVER_HEIGHT + p.offY;
-            p.rot = Math.atan2(t.sprite.y - p.y, t.sprite.x - p.x);
+            if (p.bossHover) {
+                // ボスの周囲に浮かせ、相手の方向へ向ける
+                p.x = this.sprite.x + p.offX;
+                p.y = this.groundY - p.offY;
+                const aimY = t.sprite.y - t.sprite.height * 0.15;
+                p.rot = Math.atan2(aimY - p.y, t.sprite.x - p.x);
+            } else {
+                // 相手の頭上についていき、相手の方を向く
+                p.x = t.sprite.x + p.offX;
+                p.y = t.sprite.y - HOVER_HEIGHT + p.offY;
+                p.rot = Math.atan2(t.sprite.y - p.y, t.sprite.x - p.x);
+            }
 
             p.launchIn--;
 
@@ -480,8 +649,11 @@ export default class Boss2 extends BaseBoss {
 
         for (let i = 0; i < count; i++) {
             const t = alive[i % alive.length];
+            const vx = this.playerVelocityX.get(t) ?? 0;
+            const predictFrames = BLOCK_PREDICT_FRAMES + i * BLOCK_STAGGER;
+            const predictedX = t.sprite.x + vx * predictFrames;
             const x = Phaser.Math.Clamp(
-                t.sprite.x + Phaser.Math.Between(-20, 20),
+                predictedX + Phaser.Math.Between(-12, 12),
                 arenaLeft + 60,
                 arenaRight - 60
             );
@@ -500,14 +672,7 @@ export default class Boss2 extends BaseBoss {
     tickBig(p, players) {
         const a = p.a;
 
-        // 落ちながら相手の方へ横に追いかける(地面の近くでは追わない)
-        const t = p.target;
-
-        if (t && t.hp > 0 && p.y < this.groundY - BLOCK_LOCK_HEIGHT) {
-            const dx = t.sprite.x - p.x;
-            p.x += Phaser.Math.Clamp(dx, -BLOCK_TRACK_SPEED, BLOCK_TRACK_SPEED);
-        }
-
+        // 発生時に予測した位置へ落とす。落下中は追尾しない。
         p.vy = Math.min(BLOCK_FALL_MAX, p.vy + BLOCK_FALL_GRAVITY);
         p.y += p.vy;
 
@@ -556,19 +721,23 @@ export default class Boss2 extends BaseBoss {
         }
     }
 
-    // ───────── つらら(地面から相手へ向かって連続で生える) ─────────
+    // ───────── 通常iceShock: ボスからステージ端へ走る氷柱 ─────────
 
+    // 通常版はボスの近くから左右へ向かって順番に氷柱が生える。
+    // 相手の足元を追尾する攻撃ではなく、ボスを起点にステージ両端まで走る。
     spawnIcicles() {
         const a = BOSS2_ATTACKS.icicle;
         const half = this.sprite.width / 2;
         const { arenaLeft, arenaRight } = this.cfg;
 
-        // 左右の両方へ、闘技場の端まで生やす
+        // 左右の両方へ、ボスのすぐ足元から闘技場の端まで生やす。
+        // 最初の氷柱の当たり判定をボスの外側だけでなく少し内側にも重ね、
+        // 近距離にいる相手にも当たるようにする。
+        const startOffset = half + a.range / 2 - 12;
+
         for (const dir of [-1, 1]) {
             for (let i = 0; i < ICICLE_MAX; i++) {
-                const x =
-                    this.sprite.x + dir * (half + 40 + i * ICICLE_SPACING);
-
+                const x = this.sprite.x + dir * (startOffset + i * ICICLE_SPACING);
                 if (x < arenaLeft || x > arenaRight) break;
 
                 this.spawnProj("icicle", {
@@ -584,7 +753,7 @@ export default class Boss2 extends BaseBoss {
     tickIcicle(p, players) {
         const a = p.a;
 
-        // 伸びきるまでは当たらない
+        // 地面から伸びきるまでは当たらない。
         if (p.age >= ICICLE_RISE) {
             this.hitPlayers(p, players, a.range, a.height, p.y - a.height / 2);
         }
@@ -594,29 +763,207 @@ export default class Boss2 extends BaseBoss {
         }
     }
 
-    // ───────── 同期 ─────────
+    // ───────── 氷塊落としの追加攻撃②: 相手の足元を追尾する氷柱 ─────────
 
-    // 見えている飛び道具だけをゲストへ送る
-    getExtraSyncData() {
-        return {
-            projs: this.projs
-                .filter((p) => p.active && p.delay <= 0)
-                .map((p) => ({
-                    k: p.kind,
-                    x: Math.round(p.x),
-                    y: Math.round(p.y),
-                    r: Math.round(p.rot * 100) / 100,
-                    g: p.age,
-                })),
+    // こちらは通常iceShockとは別攻撃。
+    // 14フレームごとに相手の足元へ1本ずつ出し、次の柱が出たら前の柱が沈み、
+    // さらに次の柱が出た時点で古い柱を消す。通常版のようにボスから走らない。
+    startBlockTrackingSequence(players) {
+        const target = this.nearestAlive(players);
+        if (!target) return;
+
+        this.blockTrackSequence = {
+            id: this.nextBlockTrackId++,
+            target,
+            spawned: 0,
+            wait: BLOCK_TRACK_INTERVAL + 1,
         };
+        this.spawnNextBlockTrackingIcicle(players);
     }
 
-    applyExtraSync(d) {
-        const list = Array.isArray(d.projs) ? d.projs : [];
+    spawnNextBlockTrackingIcicle(players) {
+        const state = this.blockTrackSequence;
+        if (!state || state.spawned >= BLOCK_TRACK_COUNT) return;
+
+        // 次の柱が出るタイミングで、2つ前の柱を消し、直前の柱を沈ませる。
+        for (const p of this.projs) {
+            if (!p.active || p.kind !== "blockTrackIcicle" || p.blockTrackId !== state.id) continue;
+
+            if (p.blockTrackIndex === state.spawned - 2) {
+                p.active = false;
+            } else if (p.blockTrackIndex === state.spawned - 1) {
+                p.sinking = true;
+                p.sinkAge = 0;
+            }
+        }
+
+        if (!state.target || state.target.hp <= 0) {
+            state.target = this.nearestAlive(players);
+        }
+        if (!state.target) {
+            this.blockTrackSequence = null;
+            return;
+        }
+
+        const { arenaLeft, arenaRight } = this.cfg;
+        const x = Phaser.Math.Clamp(state.target.sprite.x, arenaLeft + 25, arenaRight - 25);
+
+        this.spawnProj("blockTrackIcicle", {
+            a: BOSS2_ATTACKS.icicle,
+            target: state.target,
+            x,
+            y: this.groundY,
+            blockTrackId: state.id,
+            blockTrackIndex: state.spawned,
+            sinking: false,
+            sinkAge: 0,
+        });
+
+        state.spawned++;
+        state.wait = BLOCK_TRACK_INTERVAL;
+
+        if (state.spawned >= BLOCK_TRACK_COUNT) {
+            state.finishing = true;
+        }
+    }
+
+    tickBlockTrackingSequence(players) {
+        const state = this.blockTrackSequence;
+        if (!state) return;
+
+        if (!state.target || state.target.hp <= 0) {
+            state.target = this.nearestAlive(players);
+            if (!state.target) {
+                this.blockTrackSequence = null;
+                return;
+            }
+        }
+
+        state.wait--;
+        if (state.wait > 0) return;
+
+        if (state.spawned < BLOCK_TRACK_COUNT) {
+            this.spawnNextBlockTrackingIcicle(players);
+            return;
+        }
+
+        // 最後の柱も、最後の発生間隔が過ぎたら沈ませて連続攻撃を終了する。
+        if (state.finishing) {
+            const lastIndex = BLOCK_TRACK_COUNT - 1;
+            for (const p of this.projs) {
+                if (p.active && p.kind === "blockTrackIcicle" &&
+                    p.blockTrackId === state.id && p.blockTrackIndex === lastIndex) {
+                    p.sinking = true;
+                    p.sinkAge = 0;
+                }
+            }
+            state.finishing = false;
+            state.wait = BLOCK_TRACK_SINK;
+            return;
+        }
+
+        this.blockTrackSequence = null;
+    }
+
+    tickBlockTrackIcicle(p, players) {
+        const a = p.a;
+
+        // 伸びている間だけ相手の足元を追尾する。
+        // 次の柱が出て沈み始めたら、その場で固定して下へ沈む。
+        if (!p.sinking && p.age <= BLOCK_TRACK_RISE && p.target && p.target.hp > 0) {
+            const { arenaLeft, arenaRight } = this.cfg;
+            p.x = Phaser.Math.Clamp(p.target.sprite.x, arenaLeft + 25, arenaRight - 25);
+        }
+
+        if (p.sinking) p.sinkAge++;
+
+        const riseScale = Math.min(1, p.age / BLOCK_TRACK_RISE);
+        const sinkScale = p.sinking
+            ? Math.max(0, 1 - p.sinkAge / BLOCK_TRACK_SINK)
+            : 1;
+        const currentHeight = a.height * riseScale * sinkScale;
+
+        if (p.age >= BLOCK_TRACK_RISE && currentHeight > 1) {
+            this.hitPlayers(
+                p,
+                players,
+                a.range,
+                currentHeight,
+                this.groundY - currentHeight / 2
+            );
+        }
+
+        if (p.sinking && p.sinkAge >= BLOCK_TRACK_SINK) {
+            p.active = false;
+        }
+    }
+
+    // ───────── 同期 ─────────
+
+    // ホストの飛び道具を、プール内の同じスロット番号でゲストへ送る。
+    // 出現待ち(delay)も送るため、遅れて出る氷塊・氷柱も同じタイミングで表示できる。
+    getExtraSyncData() {
+        const projs = [];
 
         for (let i = 0; i < this.projs.length; i++) {
             const p = this.projs[i];
-            const src = list[i];
+            if (!p.active) continue;
+
+            const attackKey =
+                p.a === BOSS2_ATTACKS.iceSword ? "iceSword" :
+                p.a === BOSS2_ATTACKS.rainSword ? "rainSword" :
+                p.a === BOSS2_ATTACKS.iceBlockBig ? "iceBlockBig" :
+                p.a === BOSS2_ATTACKS.iceBlockSmall ? "iceBlockSmall" :
+                p.a === BOSS2_ATTACKS.icicle ? "icicle" : null;
+
+            projs.push({
+                i,
+                k: p.kind,
+                ak: attackKey,
+                x: Math.round(p.x * 100) / 100,
+                y: Math.round(p.y * 100) / 100,
+                r: Math.round(p.rot * 1000) / 1000,
+                g: p.age,
+                d: p.delay,
+                s: p.sinking ? 1 : 0,
+                sa: p.sinkAge,
+                bi: p.blockTrackId,
+                bn: p.blockTrackIndex,
+                h: p.hovering ? 1 : 0,
+                b: p.bossHover ? 1 : 0,
+            });
+        }
+
+        return { projs };
+    }
+
+    // ゲスト側は攻撃判定を行わず、ホストから届いた座標・状態を描画する。
+    applyExtraSync(d) {
+        const list = Array.isArray(d?.projs) ? d.projs : [];
+        const received = new Map();
+        const attackByKey = {
+            iceSword: BOSS2_ATTACKS.iceSword,
+            rainSword: BOSS2_ATTACKS.rainSword,
+            iceBlockBig: BOSS2_ATTACKS.iceBlockBig,
+            iceBlockSmall: BOSS2_ATTACKS.iceBlockSmall,
+            icicle: BOSS2_ATTACKS.icicle,
+        };
+
+        for (const src of list) {
+            if (
+                !Number.isInteger(src?.i) ||
+                src.i < 0 ||
+                src.i >= this.projs.length ||
+                !Object.prototype.hasOwnProperty.call(VIEW, src.k)
+            ) {
+                continue;
+            }
+            received.set(src.i, src);
+        }
+
+        for (let i = 0; i < this.projs.length; i++) {
+            const p = this.projs[i];
+            const src = received.get(i);
 
             if (!src) {
                 p.active = false;
@@ -624,18 +971,111 @@ export default class Boss2 extends BaseBoss {
             }
 
             p.active = true;
-            p.delay = 0;
             p.kind = src.k;
-            p.x = src.x;
-            p.y = src.y;
-            p.rot = src.r;
-            p.age = src.g;
+            p.a = attackByKey[src.ak] ?? (
+                src.k === "big" ? BOSS2_ATTACKS.iceBlockBig :
+                src.k === "small" ? BOSS2_ATTACKS.iceBlockSmall :
+                src.k === "icicle" || src.k === "blockTrackIcicle" ? BOSS2_ATTACKS.icicle :
+                src.k === "sword" ? BOSS2_ATTACKS.rainSword : null
+            );
+            p.x = Number(src.x) || 0;
+            p.y = Number(src.y) || 0;
+            p.rot = Number(src.r) || 0;
+            p.age = Number(src.g) || 0;
+            p.delay = Math.max(0, Number(src.d) || 0);
+            p.sinking = !!src.s;
+            p.sinkAge = Number(src.sa) || 0;
+            p.blockTrackId = Number(src.bi) || 0;
+            p.blockTrackIndex = Number(src.bn) || 0;
+            p.hovering = !!src.h;
+            p.bossHover = !!src.b;
         }
     }
 
     // ───────── 描画 ─────────
 
+    // 飛び道具ごとの実際の当たり判定範囲を返す。
+    // 氷柱は伸びている途中も白い予告範囲を表示し、沈むと表示も小さくする。
+    projectileHitbox(p) {
+        if (!p.active || p.delay > 0) return null;
+
+        switch (p.kind) {
+            case "sword": {
+                if (p.hovering) return null;
+                const a = p.a ?? BOSS2_ATTACKS.rainSword;
+                const isSmallSword = a === BOSS2_ATTACKS.iceSword;
+                const w = a.range;
+                const h = isSmallSword ? a.height : a.range;
+                return { x: p.x, y: p.y, w, h };
+            }
+            case "big":
+            case "small": {
+                const a = p.a ?? (p.kind === "big"
+                    ? BOSS2_ATTACKS.iceBlockBig
+                    : BOSS2_ATTACKS.iceBlockSmall);
+                return { x: p.x, y: p.y, w: a.range, h: a.height };
+            }
+            case "icicle": {
+                const a = p.a ?? BOSS2_ATTACKS.icicle;
+                const h = a.height * Math.min(1, p.age / ICICLE_RISE);
+                if (h <= 1) return null;
+                return {
+                    x: p.x,
+                    y: this.groundY - h / 2,
+                    w: a.range,
+                    h,
+                };
+            }
+            case "blockTrackIcicle": {
+                const a = p.a ?? BOSS2_ATTACKS.icicle;
+                const rise = Math.min(1, p.age / BLOCK_TRACK_RISE);
+                const sink = p.sinking
+                    ? Math.max(0, 1 - p.sinkAge / BLOCK_TRACK_SINK)
+                    : 1;
+                const h = a.height * rise * sink;
+                if (h <= 1) return null;
+                return {
+                    x: p.x,
+                    y: this.groundY - h / 2,
+                    w: a.range,
+                    h,
+                };
+            }
+            default:
+                return null;
+        }
+    }
+
+    drawProjectileHitboxes() {
+        const g = this.hitboxGraphics;
+        if (!g) return;
+        g.clear();
+
+        for (const p of this.projs) {
+            const box = this.projectileHitbox(p);
+            if (!box) continue;
+
+            // 白い半透明の塗り + 薄い輪郭で攻撃範囲を見せる
+            g.fillStyle(0xffffff, 0.20);
+            g.fillRect(
+                box.x - box.w / 2,
+                box.y - box.h / 2,
+                box.w,
+                box.h
+            );
+            g.lineStyle(1, 0xffffff, 0.55);
+            g.strokeRect(
+                box.x - box.w / 2,
+                box.y - box.h / 2,
+                box.w,
+                box.h
+            );
+        }
+    }
+
     renderExtra() {
+        this.drawProjectileHitboxes();
+
         for (let i = 0; i < this.projs.length; i++) {
             const p = this.projs[i];
             const v = this.projViews[i];
@@ -651,14 +1091,32 @@ export default class Boss2 extends BaseBoss {
                 v.setTexture(cfg.key);
             }
 
-            // つららは地面から伸びる
-            const grow =
-                p.kind === "icicle" ? Math.min(1, p.age / ICICLE_RISE) : 1;
+            // つららは根元を地面に固定して伸びる。
+            // 氷塊派生の追尾氷柱だけが沈み、通常iceShockは沈まない。
+            let grow = 1;
+            let alpha = 1;
+            let sinkOffset = 0;
 
-            v.setVisible(true)
+            if (p.kind === "icicle") {
+                // 通常iceShock: ボスからステージ端へ走る。沈み処理はない。
+                grow = Math.min(1, p.age / ICICLE_RISE);
+            } else if (p.kind === "blockTrackIcicle") {
+                // 氷塊派生: 相手の足元を追尾し、次の柱が出ると沈む。
+                const riseScale = Math.min(1, p.age / BLOCK_TRACK_RISE);
+                const sinkProgress = p.sinking
+                    ? Math.min(1, p.sinkAge / BLOCK_TRACK_SINK)
+                    : 0;
+                const sinkScale = 1 - sinkProgress;
+                grow = riseScale * sinkScale;
+                alpha = sinkScale;
+                sinkOffset = 28 * sinkProgress;
+            }
+
+            v.setVisible(grow > 0)
+                .setAlpha(alpha)
                 .setOrigin(0.5, cfg.originY)
                 .setDisplaySize(cfg.w, cfg.h * grow)
-                .setPosition(p.x, p.y);
+                .setPosition(p.x, p.y + sinkOffset);
 
             if (p.kind === "sword") {
                 // p.rot は飛ぶ向き。縦向きの絵なので、そのぶん回してそろえる
@@ -679,6 +1137,7 @@ export default class Boss2 extends BaseBoss {
             if (st === BS.TELEGRAPH) return "boss2_backstep";
             if (inAction) return "boss2_backstepattack";
         } else if (a?.block) {
+            // 氷塊落とし・派生氷柱・ボス近くからの剣は同じモーション
             if (st === BS.TELEGRAPH) return "boss2_iceblockwait";
             if (inAction) return "boss2_iceblockattack";
         } else if (a?.shock) {
