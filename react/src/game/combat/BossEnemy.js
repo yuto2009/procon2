@@ -29,7 +29,7 @@ const FOOT_CHANCE = 0.5;
 const THRUST_CHANCE = 0.5;
 
 const RAISED_OFFSET = 90;
-const DASH_CHANCE_PLATFORM = 1;
+const DASH_CHANCE_PLATFORM = 0.7;
 const PLATFORM_STAY = 30;
 
 const RAGE_HP_RATIO = 0.5;
@@ -58,7 +58,7 @@ export const BOSS_ATTACKS = {
 
     foot: {
         foot: true,
-        startup: 18,
+        startup: 19,
         active: 5,
         recovery: 15,
         range: 90,
@@ -95,8 +95,8 @@ export const BOSS_ATTACKS = {
         recovery: 0,
         range: 100,
         height: 65,
-        speed: 9,
-        damage: 40,
+        speed:12,
+        damage: 50,
         stamina: 0,
         hitstun: 20,
         knockback: 300,
@@ -262,7 +262,7 @@ export default class BossEnemy {
             ? alive[Math.floor(Math.random() * alive.length)]
             : null;
     }
-
+    // ボスの全体管理
     tick(players) {
         this.trackPlatformTime(players);
 
@@ -336,7 +336,7 @@ export default class BossEnemy {
         // ボス本体とは独立して左右の衝撃波を動かす
         this.tickShockwaves(players);
     }
-
+    //ボスの次の行動を決める
     tickIdle(players) {
         const nearest = this.nearestAlive(players);
         if (!nearest) return;
@@ -402,8 +402,24 @@ export default class BossEnemy {
             this.updateAim(false);
             this.enter(BS.TELEGRAPH);
         } else if (!far && !high && !up) {
-            this.attack = BOSS_ATTACKS.slash;
-            this.enter(BS.TELEGRAPH);
+             const r = Math.random();
+
+    if (r < 0.40) {
+        // 40%：通常 slash
+        this.attack = BOSS_ATTACKS.slash;
+
+    } else if (r < 0.7) {
+        // 30%：dash
+        this.target = target;
+        this.attack = BOSS_ATTACKS.dash;
+        this.updateAim(false);
+
+    } else {
+        // 30%：thrust
+        this.attack = BOSS_ATTACKS.thrust;
+    }
+
+    this.enter(BS.TELEGRAPH);
         } else {
             this.frame = IDLE_WAIT - RETRY_WAIT;
         }
@@ -468,7 +484,7 @@ export default class BossEnemy {
             this.vy = 0;
         }
     }
-
+    //実際の攻撃の処理を実行する
     tickActive(players) {
         const a = this.attack;
 

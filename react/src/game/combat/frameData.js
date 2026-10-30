@@ -15,7 +15,7 @@ export const ATTACKS = {
 export const FX = {parryStop: 10, parryShake: 0.004, flashFrames: 4};
 
 // 受付を「構えて4フレーム後から、6フレームだけ」にする
-export const PARRY = {delay: 4, window: 6, recovery: 24, stamina: 15, staminaGain: 30, enemyStun: 60};
+export const PARRY = {delay: 4, window: 6, recovery: 24, stamina: 15, staminaGain: 40, enemyStun: 60};
 
 // 回避のスタミナを半分にする
 export const DODGE = {frames: 18, iframes: 10, speed: 380, stamina: 9};
