@@ -6,9 +6,9 @@ const WALK_SPEED = 2;          // 歩く速さ(px/フレーム)
 const CLOSE_RANGE = 170;       // この距離以内=近距離、それより遠い=遠距離
 
 // 遠距離で選ぶ攻撃の割合(合計1にすること)
-const FAR_BLOCK_CHANCE = 1;  // 氷塊系(選択後、さらに3種類から均等抽選)
-const FAR_RAIN_CHANCE = 0;   // 相手の頭上に追尾する氷の剣
-const FAR_SHOCK_CHANCE = 0; // 通常のiceShock
+const FAR_BLOCK_CHANCE = 0.5;  // 氷塊系(選択後、さらに3種類から均等抽選)
+const FAR_RAIN_CHANCE = 0.3;   // 相手の頭上に追尾する氷の剣
+const FAR_SHOCK_CHANCE = 0.2; // 通常のiceShock
 
 // 近距離では通常iceShockを優先し、残りをバックステップ攻撃にする
 const CLOSE_SHOCK_CHANCE = 0.5;
