@@ -1,6 +1,11 @@
 import Phaser from "phaser";
 import BaseBoss, { BS } from "./BaseBoss";
 
+// ───────── 一回きりの演出のスイッチ ─────────
+// true : 最初の確定攻撃(氷塊の雨)と、HP1/4以下の第二形態への変身を行う
+// false: どちらも行わない(テスト用。最初から通常の行動を繰り返す)
+const ONE_SHOT_EVENTS = true;
+
 // ───────── Boss2 の調整用の数値 ─────────
 const WALK_SPEED = 2;          // 歩く速さ(px/フレーム)
 const CLOSE_RANGE = 170;       // この距離以内=近距離、それより遠い=遠距離
@@ -17,9 +22,24 @@ const CLOSE_SHOCK_CHANCE = 0.5;
 // そのうち iceShock を選ぶ確率(残りは氷塊を落とす攻撃)
 const HEAD_RAIN_SHOCK_CHANCE = 0.5;
 
+// 最初の攻撃(戦闘開始後の1回だけ確定): 空中から小さい氷塊を大量に降らせる
+const HAIL_AIR_HEIGHT = 300;       // 瞬間移動で浮かぶ高さ(足元が地面からこの高さ)
+const HAIL_VANISH_FRAMES = 8;      // 消えている時間(フレーム)
+const HAIL_SHOW_FRAMES = 50;       // 空中に現れてから降らせ始めるまで(ボスを見せる時間)
+const HAIL_COLUMN_SPACING = 12;    // 氷塊の列の間隔(px。小さいほど密になる)
+const HAIL_PIECE_SIZE = 28;        // 雨の氷塊の表示サイズ(px)
+const HAIL_GAP_OFFSET = 100;       // 中央から、左右のすき間の中心までの距離(px)
+const HAIL_GAP_WIDTH = 120;        // すき間1つの幅(px)。氷塊を降らせない範囲
+const HAIL_PER_COLUMN = 5;         // 1列に降らせる氷塊の数
+const HAIL_COLUMN_JITTER = 90;     // 列ごとの降り始めのランダムなずれ(フレーム)
+const HAIL_SECOND_DELAY = 24;      // 同じ列の2個目以降が、順に遅れるフレーム数
+const HAIL_START_Y = -450;         // 氷塊が降り始める高さ(画面の上端より上。小さいほど高い所から落ちる)
+
 // バックステップ攻撃(近距離)
 const BACKSTEP_SPEED = 6;
-const FIRST_VOLLEY_AT = 6;
+const BACKSTEP_STARTUP_FRAMES = 12; // 予備動作の長さ(フレーム)
+const BACKSTEP_EDGE_MARGIN = 20;    // ステージ端の柱にめり込まないための余白(px)
+const FIRST_VOLLEY_AT = 6; // 後退を始めてから1回目の剣を撃つまでのフレーム数
 const SWORD_HEIGHTS = [30, 85, 140];  // 剣を撃つ高さ(地面から)
 
 // 氷塊
@@ -44,10 +64,10 @@ const BLOCK_TRACK_COUNT = 7;
 // 氷柱は、最初はゆっくり出て、だんだん速くなる
 const BLOCK_TRACK_INTERVAL_START = 40; // 1本目→2本目の間隔(フレーム)。最初はゆっくり
 const BLOCK_TRACK_INTERVAL_RATIO = 0.8; // 1本ごとに、間隔にこの倍率をかけて短くする
-const BLOCK_TRACK_INTERVAL_MIN = 23;   // 間隔の下限(フレーム)
-const BLOCK_TRACK_RISE_MIN = 20;       // 速くなったときの、伸びきるまでの下限(フレーム)
-const BLOCK_TRACK_RISE = 43;           // 伸びきって当たり判定が出るまでのフレーム
-const BLOCK_TRACK_LOCK = 16;           // 当たり判定が出る何フレーム前に追尾をやめるか(大きいほど避けやすい)
+const BLOCK_TRACK_INTERVAL_MIN = 18;   // 間隔の下限(フレーム)
+const BLOCK_TRACK_RISE_MIN = 10;       // 速くなったときの、伸びきるまでの下限(フレーム)
+const BLOCK_TRACK_RISE = 25;           // 伸びきって当たり判定が出るまでのフレーム
+const BLOCK_TRACK_LOCK = 20;           // 当たり判定が出る何フレーム前に追尾をやめるか(大きいほど避けやすい)
 const BLOCK_TRACK_SINK = 6;            // 沈み始めてから沈みきるまでのフレーム
 
 // ボスの近くに浮かべて1本ずつ撃つ剣
@@ -68,7 +88,34 @@ const LAUNCH_FIRST = 120;             // 最初の2本を撃つまで(120フレ�
 const LAUNCH_SECOND = 240;            // 残り4本を撃つまで(さらに2秒後)
 const FIRST_GROUP = [2, 3];           // 最初に撃つ2本(真ん中の2本)
 
-const PROJ_POOL = 60;                 // 同時に存在できる飛び道具の最大数
+const PROJ_POOL = 200;                // 同時に存在できる飛び道具の最大数(氷塊の雨で多く使う)
+
+// ───────── 第二形態(HPがこの割合以下で発動) ─────────
+const PHASE2_HP_RATIO = 0.75;
+
+// ビーム: 最初は遅く、だんだん速く。間隔が THICK_AT 以下になったら極太ビームに切り替える
+const BEAM_INTERVAL_START = 70;   // 1発目→2発目の間隔(フレーム)
+const BEAM_INTERVAL_RATIO = 0.72; // 1発ごとに間隔へかける倍率
+const BEAM_INTERVAL_MIN = 12;
+const BEAM_THICK_AT = 18;         // この間隔以下になったら極太ビーム
+
+// 細いビーム(ボス→プレイヤー)
+const BEAM_WARN_RATIO = 0.6;      // 判定が出るまでの待ち = 間隔 × この値
+const BEAM_WARN_MIN = 14;         // 待ちの最短フレーム
+const BEAM_LOCK = 8;              // 当たり判定が出る何フレーム前に狙いを固定するか
+const BEAM_SHOW_WARN = true;     // true: 予告線を表示 / false: 表示しない(判定が出るまでの待ち時間は残る)
+const BEAM_WARN_W = 4;            // 予告線の太さ(px)
+const BEAM_THIN_W = 80;           // 細いビームの太さ(px)
+const BEAM_THIN_LIFE = 8;         // 細いビームの当たり判定が出ている時間(フレーム)
+const BEAM_LENGTH = 1500;         // 細いビームの長さ(px)
+
+// 極太ビーム(ボスの真下 → 画面全体)
+const BEAM_BIG_WARN = 40;         // 判定が出るまでの待ち
+const BEAM_BIG_W = 240;           // 真下ビームの太さ(px)
+const BEAM_BIG_DOWN = 36;         // 真下に撃ち続ける時間(横に避けられる)
+const BEAM_BIG_SPREAD = 6;        // 画面全体へ広がるフレーム数
+const BEAM_BIG_HOLD = 4;          // 画面全体に残るフレーム数
+// ※ SPREAD + HOLD = 10 フレーム。回避の無敵(DODGE.iframes = 10)で避けられる長さ
 
 // 剣の画像は縦向きの絵。先が上を向いた絵なら +π/2、下を向いた絵なら -π/2
 const SWORD_ART_OFFSET = Math.PI / 2;
@@ -86,7 +133,7 @@ export const BOSS2_ATTACKS = {
     backstepAttack: {
         noBody: true, backstep: true,
         // startup を長くして2回目を遅らせ、recovery を長くして後隙を増やした
-        startup: 32, active: 10, recovery: 55,
+        startup: 60, active: 10, recovery: 45,
         ...NONE,
     },
 
@@ -112,17 +159,37 @@ export const BOSS2_ATTACKS = {
         ...NONE,
     },
 
+    // 最初の攻撃(1回だけ確定): 一瞬消えて中央の空中に現れ、
+    // 小さい氷塊を敷き詰めるように降らせる(中央の左右に2つのすき間)。
+    // 降り終わったら、一瞬消えて地面の中央に戻る。
+    iceBlockHail: {
+        noBody: true, block: true, hail: true, air: true,
+        startup: HAIL_VANISH_FRAMES + HAIL_SHOW_FRAMES,
+        active: 20,
+        recovery: 600,   // 実際は氷塊が降り終わった時点で戻って終わる(これは安全用)
+        ...NONE,
+    },
+
+    // 第二形態の変身攻撃: 最初の攻撃と同じ位置に浮き上がり、ビームを撃って、降りてくる
+    fireBeam: {
+        noBody: true, beam: true, air: true,
+        startup: HAIL_VANISH_FRAMES + HAIL_SHOW_FRAMES,
+        active: 20,
+        recovery: 900,   // 実際はビームが全部終わった時点で戻って終わる(これは安全用)
+        ...NONE,
+    },
+
     // 通常iceShock: ボスの左右からステージ端へ向かって氷柱を走らせる。
     iceShock: {
         noBody: true, shock: true,
-        startup: 25, active: 45, recovery: 30,
+        startup: 16, active: 45, recovery: 30,
         ...NONE,
     },
 
     // 通常iceShock用: ボスの真下(体の幅ぶん)の当たり判定
     icicleUnder: {
         projectile: true, parryable: false,
-        range: 150, height: 50,
+        range: 150, height: 90,
         damage: 45, stamina: 0, hitstun: 25, knockback: 280,
         hitStop: 0, shake: 0.01,
     },
@@ -165,11 +232,35 @@ export const BOSS2_ATTACKS = {
         hitStop: 0, shake: 0.005,
     },
 
+    // 最初の攻撃の雨で降る、とても小さい氷塊(数が多いので1個のダメージは小さい)
+    iceHailPiece: {
+        projectile: true, parryable: false,
+        range: 20, height: 20,
+        damage: 12, stamina: 0, hitstun: 12, knockback: 150,
+        hitStop: 0, shake: 0.003,
+    },
+
     icicle: {
         projectile: true, parryable: false,
         range: 44, height: 100,
         damage: 45, stamina: 0, hitstun: 25, knockback: 280,
         hitStop: 0, shake: 0.01,
+    },
+
+    // 細いビームのダメージ設定(パリィ不可)
+    beamThin: {
+        projectile: true, parryable: false,
+        range: 0, height: 0,
+        damage: 30, stamina: 0, hitstun: 20, knockback: 260,
+        hitStop: 0, shake: 0.008,
+    },
+
+    // 極太ビームのダメージ設定(パリィ不可)
+    beamBig: {
+        projectile: true, parryable: false,
+        range: 0, height: 0,
+        damage: 55, stamina: 0, hitstun: 30, knockback: 320,
+        hitStop: 0, shake: 0.014,
     },
 };
 
@@ -180,6 +271,7 @@ const VIEW = {
     small:  { key: "boss2_smalliceblock", w: 44,  h: 44,  originY: 0.5 },
     icicle: { key: "boss2_icicle",        w: 50,  h: 110, originY: 1 },
     blockTrackIcicle: { key: "boss2_icicle", w: 50, h: 110, originY: 1 },
+    beam:   { key: "boss2_firebeam",      w: 1,   h: 1,   originY: 0.5 },
 };
 
 function blankProj() {
@@ -199,11 +291,13 @@ function blankProj() {
         sinkAge: 0,         // 波状氷柱: 沈み始めてからのフレーム
         blockTrackId: 0,           // 氷塊派生氷柱: 同じ連続攻撃を識別
         blockTrackIndex: 0,        // 氷塊派生氷柱: 何本目か
-        rise: BLOCK_TRACK_RISE,    // 氷塊派生氷柱: 伸びきるまでのフレーム(後の柱ほど短い)
+        rise: BLOCK_TRACK_RISE,    // 氷塊派生氷柱: 伸びきるまでのフレーム(後の柱ほど短い)。ビームでは判定が出るまでの待ち
         lock: BLOCK_TRACK_LOCK,    // 氷塊派生氷柱: 当たり判定の何フレーム前に追尾をやめるか
-        target: null,       // 剣・追尾氷柱: 追従する相手
+        target: null,       // 剣・追尾氷柱・ビーム: 追従する相手
         offX: 0, offY: 0,   // 剣: 浮いている位置
         traveled: 0,
+        beamMode: "thin",   // ビーム: "thin"(ボス→相手) か "big"(真下→全体)
+        beamStage: -1,      // ビーム: 段階が変わったら hitSet を空にするための記録
         hitSet: new Set(),
     };
 }
@@ -217,8 +311,9 @@ export default class Boss2 extends BaseBoss {
         const L = (key, file) => scene.load.image(key, `/assets/boss2/${file}`);
 
         L("boss2", "boss2.png");                               // 待機
-        L("boss2_backstep", "boss2backstep.png");              // バックステップ
-        L("boss2_backstepattack", "boss2backstepattack.png");
+        L("boss2_backstepstartup", "boss2backstepstartup.png"); // バックステップ予備動作
+        L("boss2_backstep", "boss2backstep.png");              // バックステップで後退中
+        L("boss2_backstepattack", "boss2backstepattack.png");  // 着地後・攻撃姿勢
         L("boss2_iceblock", "boss2iceblock.png");              // 氷塊
         L("boss2_iceblockwait", "boss2iceblockwait.png");
         L("boss2_iceblockattack", "boss2iceblockattack.png");
@@ -226,7 +321,11 @@ export default class Boss2 extends BaseBoss {
         L("boss2_iceshockattack", "boss2iceshockattack.png");
         L("boss2_icesword", "boss2icesword.png");              // 氷の剣
         L("boss2_icicle", "boss2icicle.png");                  // つらら(飛び道具)
+        L("boss2_firstattack", "boss2firstattack.png");        // 最初の攻撃(空中)
         L("boss2_smalliceblock", "boss2smalliceblock.png");    // 小さい氷塊
+        L("boss2_changedfire", "boss2changedfire.png");        // 第二形態への変身(空中)
+        L("boss2_firebeam", "boss2firebeam.png");              // ビーム(縦長の絵)
+        L("boss2_mood2", "boss2mood2.png");                    // 第二形態の待機
     }
 
     constructor(scene, x, groundY, opts = {}) {
@@ -256,6 +355,9 @@ export default class Boss2 extends BaseBoss {
         // 攻撃判定を白く薄く表示する(プレイヤーが危険範囲を見て回避できるようにする)
         this.hitboxGraphics = scene.add.graphics().setDepth(8);
 
+        // 画面全体に広がる極太ビームの見た目(単色の帯)を描く
+        this.beamGraphics = scene.add.graphics().setDepth(7);
+
         // プレイヤーの直近の移動量から、氷塊の落下先を予測する
         this.lastPlayerX = new Map();
         this.playerVelocityX = new Map();
@@ -270,6 +372,19 @@ export default class Boss2 extends BaseBoss {
         // 頭上の剣: 1本目が撃たれたか / 撃たれた直後の反応攻撃がまだ未使用か
         this.headRainFired = false;
         this.headRainReact = false;
+
+        // 最初の攻撃: もう出したか / 空中にいるか / 消えているか / 戻る前に消えている時間
+        this.openingDone = false;
+        this.hailAir = false;
+        this.hailHidden = false;
+        this.hailReturn = 0;
+
+        // 第二形態: 発動したか / ビーム攻撃の進行状況
+        this.phase2 = false;
+        this.beam = null;
+
+        // スイッチが false なら最初の確定攻撃も行わない(最初から歩いて通常行動する)
+        if (!ONE_SHOT_EVENTS) this.openingDone = true;
     }
 
     // ───────── 行動選択 ─────────
@@ -284,9 +399,9 @@ export default class Boss2 extends BaseBoss {
         return choices[Math.floor(Math.random() * choices.length)];
     }
 
-    // 氷塊・氷柱の追尾・ボス近くの剣のどれかが、まだ続いているか
+    // 氷塊・氷柱の追尾・ボス近くの剣・ビームのどれかが、まだ続いているか
     isBlockAttackBusy() {
-        if (this.blockTrackSequences.length || this.bossSwordSequence) {
+        if (this.blockTrackSequences.length || this.bossSwordSequence || this.beam) {
             return true;
         }
 
@@ -296,6 +411,7 @@ export default class Boss2 extends BaseBoss {
                 (p.kind === "big" ||
                     p.kind === "small" ||
                     p.kind === "blockTrackIcicle" ||
+                    p.kind === "beam" ||
                     (p.kind === "sword" && p.bossHover))
         );
     }
@@ -312,11 +428,31 @@ export default class Boss2 extends BaseBoss {
             return;
         }
 
+        // HPが1/4を下回ったら、次の行動の切れ目で第二形態へ(1回だけ)
+        if (ONE_SHOT_EVENTS && !this.phase2 && this.hp <= this.maxHp * PHASE2_HP_RATIO) {
+            this.phase2 = true;
+
+            // 頭上に浮いている剣は消しておく
+            for (const p of this.projs) {
+                if (p.active && p.kind === "sword" && p.hovering && !p.bossHover) {
+                    p.active = false;
+                }
+            }
+
+            this.attack = BOSS2_ATTACKS.fireBeam;
+            this.enter(BS.TELEGRAPH);
+            return;
+        }
+
+        // 第二形態になったあとの行動は、別のCPUを作るまでの仮として、その場から動かず何もしない
+        if (this.phase2) return;
+
         const dx = nearest.sprite.x - this.sprite.x;
         const far = Math.abs(dx) > CLOSE_RANGE;
 
         // 遠ければ近づきながら待つ
-        if (far) {
+        // (最初の攻撃で瞬間移動するまでは、その場から動かない)
+        if (far && this.openingDone) {
             this.moveBody(Math.sign(dx) * WALK_SPEED, 0);
         }
 
@@ -346,6 +482,14 @@ export default class Boss2 extends BaseBoss {
 
         if (this.frame <= this.cfg.idleWait) return;
 
+        // 戦闘開始後の最初の攻撃は、確定で氷塊の雨(この1回だけ)
+        if (!this.openingDone) {
+            this.openingDone = true;
+            this.attack = BOSS2_ATTACKS.iceBlockHail;
+            this.enter(BS.TELEGRAPH);
+            return;
+        }
+
         if (!far) {
             if (Math.random() < CLOSE_SHOCK_CHANCE) {
                 // 近距離対策として通常iceShockも使用する
@@ -357,7 +501,7 @@ export default class Boss2 extends BaseBoss {
             const r = Math.random();
 
             if (r < FAR_BLOCK_CHANCE) {
-                // 氷塊系の中で、3種類を均等に選ぶ
+                // 氷塊系の中で、3種類から均等抽選
                 this.attack = this.chooseIceBlockVariant();
             } else if (r < FAR_BLOCK_CHANCE + FAR_RAIN_CHANCE) {
                 // 頭上追尾剣(浮いている間は上の分岐で処理済みなので、重ならない)
@@ -372,13 +516,40 @@ export default class Boss2 extends BaseBoss {
 
     // ───────── 攻撃の流れ ─────────
 
-    // 予備動作の間: バックステップ攻撃は後ろへ下がりながら1回目を撃つ
+    // 予備動作の後に後退しながら1回目の剣を撃つ
     onTelegraphTick() {
+        // 空中に上がる攻撃(最初の氷塊の雨 / 第二形態のビーム): 一瞬消えて中央の空中に現れる
+        if (this.attack?.air) {
+            if (this.frame < HAIL_VANISH_FRAMES) {
+                this.hailHidden = true;
+            } else if (this.frame === HAIL_VANISH_FRAMES) {
+                const { arenaLeft, arenaRight } = this.cfg;
+                this.teleportBoss((arenaLeft + arenaRight) / 2, HAIL_AIR_HEIGHT);
+                this.hailAir = true;
+                this.hailHidden = false;
+            }
+            return;
+        }
+
         if (!this.attack?.backstep) return;
 
+        // 最初の数フレームは予備動作だけで、まだ後退しない
+        if (this.frame <= BACKSTEP_STARTUP_FRAMES) return;
+
+        // 予備動作が終わったら後ろへ下がる
         this.moveBody(-this.facing * BACKSTEP_SPEED, 0);
 
-        if (this.frame === FIRST_VOLLEY_AT) {
+        // ステージの外(柱の向こう)へ出ないように止める
+        const { arenaLeft, arenaRight } = this.cfg;
+        const half = this.sprite.width / 2 + BACKSTEP_EDGE_MARGIN;
+        this.sprite.x = Phaser.Math.Clamp(
+            this.sprite.x,
+            arenaLeft + half,
+            arenaRight - half
+        );
+
+        // 後退を始めてから指定フレーム後に1回目の剣を撃つ
+        if (this.frame === BACKSTEP_STARTUP_FRAMES + FIRST_VOLLEY_AT) {
             this.fireVolley();
         }
     }
@@ -394,6 +565,10 @@ export default class Boss2 extends BaseBoss {
             this.startBlockTrackingSequence(players);
         } else if (a.blockSwords) {
             this.startBossSwordSequence(players);
+        } else if (a.beam) {
+            this.startBeamSequence(players);
+        } else if (a.hail) {
+            this.spawnHail();
         } else if (a.block) {
             this.spawnBlocks(players);
         } else if (a.shock) {
@@ -439,6 +614,7 @@ export default class Boss2 extends BaseBoss {
         for (const p of this.projs) p.active = false;
         this.blockTrackSequences = [];
         this.bossSwordSequence = null;
+        this.beam = null;
     }
 
     hitPlayers(p, players, w, h, cy = p.y) {
@@ -476,6 +652,8 @@ export default class Boss2 extends BaseBoss {
 
         this.tickBlockTrackingSequences();
         this.tickBossSwordSequence();
+        this.tickHailReturn();
+        this.tickBeamSequence(players);
 
         for (const p of this.projs) {
             if (!p.active) continue;
@@ -504,8 +682,26 @@ export default class Boss2 extends BaseBoss {
                 case "blockTrackIcicle":
                     this.tickBlockTrackIcicle(p, players);
                     break;
+                case "beam":
+                    this.tickBeam(p, players);
+                    break;
             }
         }
+    }
+
+    // 空中に上がる攻撃の間は、重力で落ちない
+    isFloating() {
+        return this.hailAir && !!this.attack?.air;
+    }
+
+    // 待機に戻る・スタンしたときは、空中や消えている状態を戻す
+    onEnter(state) {
+        if (state === BS.IDLE || state === BS.STUN) {
+            this.hailAir = false;
+            this.hailHidden = false;
+            this.hailReturn = 0;
+        }
+        if (state === BS.STUN) this.beam = null;   // スタンしたらビームの連続発射をやめる
     }
 
     onDeadTick() {
@@ -514,6 +710,8 @@ export default class Boss2 extends BaseBoss {
 
     onDead() {
         this.clearProjs();
+        this.hailAir = false;
+        this.hailHidden = false;
     }
 
     // ───────── 氷の剣(バックステップ) ─────────
@@ -705,6 +903,70 @@ export default class Boss2 extends BaseBoss {
             p.y < -200
         ) {
             p.active = false;
+        }
+    }
+
+    // ───────── 最初の攻撃: 空中から小さい氷塊の雨 ─────────
+
+    // ボスを瞬間移動させる(heightAboveGround は足元の、地面からの高さ)
+    teleportBoss(x, heightAboveGround) {
+        this.sprite.x = x;
+        this.sprite.y =
+            this.groundY - this.sprite.height / 2 - heightAboveGround;
+        this.vy = 0;
+    }
+
+    // 小さい氷塊を、すき間以外の全部の列に、列ごとに少しずらして降らせる
+    spawnHail() {
+        const { arenaLeft, arenaRight } = this.cfg;
+        const center = (arenaLeft + arenaRight) / 2;
+        const a = BOSS2_ATTACKS.iceHailPiece;
+
+        this.hailReturn = 0;
+
+        for (
+            let x = arenaLeft + HAIL_COLUMN_SPACING / 2;
+            x < arenaRight;
+            x += HAIL_COLUMN_SPACING
+        ) {
+            // 中央の左右にある2つのすき間には、降らせない
+            const inGap = [-1, 1].some(
+                (s) =>
+                    Math.abs(x - (center + s * HAIL_GAP_OFFSET)) <
+                    HAIL_GAP_WIDTH / 2
+            );
+            if (inGap) continue;
+
+            const jitter = Phaser.Math.Between(0, HAIL_COLUMN_JITTER);
+
+            for (let j = 0; j < HAIL_PER_COLUMN; j++) {
+                this.spawnProj("small", {
+                    a,
+                    x,
+                    y: HAIL_START_Y,
+                    vx: 0,
+                    vy: 0,
+                    delay: jitter + j * HAIL_SECOND_DELAY,
+                });
+            }
+        }
+    }
+
+    // 空中の攻撃(氷塊の雨 / ビーム)が全部終わったら、一瞬消えて、地面の中央に戻る
+    tickHailReturn() {
+        const a = this.attack;
+
+        if (!a?.air || this.state !== BS.RECOVER || !this.hailAir) return;
+        if (this.isBlockAttackBusy()) return;
+
+        this.hailHidden = true;
+        this.hailReturn++;
+
+        if (this.hailReturn >= HAIL_VANISH_FRAMES) {
+            const { arenaLeft, arenaRight } = this.cfg;
+            this.teleportBoss((arenaLeft + arenaRight) / 2, 0);
+            this.attack = null;
+            this.enter(BS.IDLE);   // onEnter で、空中・消えている状態も戻る
         }
     }
 
@@ -1006,6 +1268,224 @@ export default class Boss2 extends BaseBoss {
         }
     }
 
+    // ───────── 第二形態: ファイアビーム ─────────
+
+    // index 発目のビームを撃ってから、次を撃つまでの間隔(だんだん短くなる)
+    beamInterval(index) {
+        return Math.max(
+            BEAM_INTERVAL_MIN,
+            Math.round(BEAM_INTERVAL_START * BEAM_INTERVAL_RATIO ** index)
+        );
+    }
+
+    startBeamSequence(players) {
+        const targets = players.filter((p) => p.hp > 0);
+        if (!targets.length) return;
+
+        this.beam = { targets, index: 0, wait: 0 };
+        this.fireBeamStep();
+    }
+
+    // 1ステップ分: 間隔が十分短くなっていれば極太ビーム、まだなら全員へ細いビーム
+    fireBeamStep() {
+        const st = this.beam;
+        if (!st) return;
+
+        const interval = this.beamInterval(st.index);
+
+        if (interval <= BEAM_THICK_AT) {
+            // 極太ビーム: ボスの真下へ撃ち、そのまま画面全体へ広がる。これでこの攻撃は終わり
+            this.spawnProj("beam", {
+                a: BOSS2_ATTACKS.beamBig,
+                beamMode: "big",
+                x: this.sprite.x,
+                y: this.sprite.y,
+                rot: Math.PI / 2,
+            });
+            this.beam = null;   // 残りの終了待ちは、飛び道具(kind: beam)が残っているかで判定
+            return;
+        }
+
+        const warn = Math.max(
+            BEAM_WARN_MIN,
+            Math.round(interval * BEAM_WARN_RATIO)
+        );
+
+        for (const t of st.targets) {
+            if (t.hp <= 0) continue;
+
+            this.spawnProj("beam", {
+                a: BOSS2_ATTACKS.beamThin,
+                beamMode: "thin",
+                target: t,
+                rise: warn,   // 判定が出るまでの待ち(同期でも使う)
+                x: this.sprite.x,
+                y: this.sprite.y,
+                rot: Math.atan2(t.sprite.y - this.sprite.y, t.sprite.x - this.sprite.x),
+            });
+        }
+
+        st.index++;
+        st.wait = interval;
+    }
+
+    tickBeamSequence() {
+        const st = this.beam;
+        if (!st) return;
+
+        if (!st.targets.some((t) => t.hp > 0)) {
+            this.beam = null;
+            return;
+        }
+
+        st.wait--;
+        if (st.wait <= 0) this.fireBeamStep();
+    }
+
+    // ビームの現在の状態(当たり判定の有無・太さ・濃さ)。ホストの判定とゲストの描画で共用
+    beamInfo(p) {
+        const a = p.age;
+
+        if (p.beamMode === "big") {
+            const { arenaLeft, arenaRight } = this.cfg;
+            const full = arenaRight - arenaLeft + 400;
+            const bottom = this.groundY + 20;
+            const topAll = -100;   // 画面の上端より上(広がったときは天井まで全部覆う)
+            const downAt = BEAM_BIG_WARN;
+            const spreadAt = downAt + BEAM_BIG_DOWN;
+            const holdAt = spreadAt + BEAM_BIG_SPREAD;
+
+            // top = ビームの上端のy、len = そこから下の長さ。当たり判定も見た目もこの値を使う
+            if (a < downAt) {
+                // 待ち: 判定なし(BEAM_SHOW_WARN が true のときだけ、細い線がだんだん太くなる)
+                return {
+                    hit: false, stage: 0, alpha: 0.35, top: p.y, len: bottom - p.y,
+                    w: 8 + (BEAM_BIG_W - 8) * (a / downAt),
+                };
+            }
+            if (a < spreadAt) {
+                // 真下に撃っている間(点滅はしない)
+                return { hit: true, stage: 1, alpha: 1, top: p.y, len: bottom - p.y, w: BEAM_BIG_W };
+            }
+
+            // 広がる間: 横は画面全体へ、上は天井まで。広がりきったらそのまま保つ
+            const t = Math.min(1, (a - spreadAt) / BEAM_BIG_SPREAD);
+            const top = p.y + (topAll - p.y) * t;
+            return {
+                hit: true, stage: 2, alpha: 1, top, len: bottom - top,
+                w: BEAM_BIG_W + (full - BEAM_BIG_W) * t,
+            };
+        }
+
+        // 細いビーム
+        if (a < p.rise) {
+            return { hit: false, stage: 0, alpha: 0.4, top: p.y, len: BEAM_LENGTH, w: BEAM_WARN_W };
+        }
+        return { hit: true, stage: 1, alpha: 1, top: p.y, len: BEAM_LENGTH, w: BEAM_THIN_W };
+    }
+
+    tickBeam(p, players) {
+        const big = p.beamMode === "big";
+
+        // 細いビームは、当たり判定が出る少し前まで相手を狙い続け、そこで向きを固定する
+        if (!big) {
+            p.x = this.sprite.x;
+            p.y = this.sprite.y;
+
+            if (p.age <= p.rise - BEAM_LOCK && p.target && p.target.hp > 0) {
+                p.rot = Math.atan2(
+                    p.target.sprite.y - p.y,
+                    p.target.sprite.x - p.x
+                );
+            }
+        }
+
+        const info = this.beamInfo(p);
+
+        // 段階が変わったら当たり済みの記録を消す(回避で通り抜けた相手にも次の段階が当たる)
+        if (info.stage !== p.beamStage) {
+            p.beamStage = info.stage;
+            p.hitSet.clear();
+        }
+
+        if (info.hit) {
+            if (big) {
+                this.hitPlayers(p, players, info.w, info.len, info.top + info.len / 2);
+            } else {
+                this.hitBeamLine(p, players, info.w, info.len);
+            }
+        }
+
+        const end = big
+            ? BEAM_BIG_WARN + BEAM_BIG_DOWN + BEAM_BIG_SPREAD + BEAM_BIG_HOLD
+            : p.rise + BEAM_THIN_LIFE;
+
+        if (p.age >= end) p.active = false;
+    }
+
+    // 斜めのビーム: 線と(太さぶん広げた)プレイヤーの矩形で判定する
+    hitBeamLine(p, players, width, len) {
+        const line = new Phaser.Geom.Line(
+            p.x,
+            p.y,
+            p.x + Math.cos(p.rot) * len,
+            p.y + Math.sin(p.rot) * len
+        );
+
+        for (const pl of players) {
+            if (pl.hp <= 0 || p.hitSet.has(pl)) continue;
+
+            const rect = pl.sprite.getBounds();
+            Phaser.Geom.Rectangle.Inflate(rect, width / 2, width / 2);
+
+            if (Phaser.Geom.Intersects.LineToRectangle(line, rect)) {
+                p.hitSet.add(pl);
+                pl.receiveHit(this, p.a);
+            }
+        }
+    }
+
+    renderBeam(p, v) {
+        const info = this.beamInfo(p);
+
+        // 予告線を表示しない設定なら、判定が出るまでは何も描かない
+        if (!info.hit && !BEAM_SHOW_WARN) {
+            v.setVisible(false);
+            return;
+        }
+
+        // 画面全体に広がる段階は、縦長の画像を横に引き伸ばすと絵が崩れるので、
+        // 当たり判定とまったく同じ範囲を単色の帯で塗って表示する(画像は隠す)
+        // (真下に撃っている間も、広がる間も、同じ描き方にする)
+        if (p.beamMode === "big") {
+            v.setVisible(false);
+
+            const g = this.beamGraphics;
+            const x0 = p.x - info.w / 2;
+
+            g.fillStyle(0xff8a2b, 0.9 * info.alpha);
+            g.fillRect(x0, info.top, info.w, info.len);
+
+            // 中心に明るい芯を入れて、ビームらしく見せる
+            const coreW = info.w * 0.6;
+            g.fillStyle(0xfff2c2, 0.95 * info.alpha);
+            g.fillRect(p.x - coreW / 2, info.top, coreW, info.len);
+            return;
+        }
+
+        // 画像は縦長で、上端が根元・下へ伸びる絵。回転0のとき真下を向く。
+        // 細いビームは p.rot(0=右向き)に合わせて 90度ぶん引いて回す。極太ビームは真下なので回転0。
+        const rot = p.beamMode === "big" ? 0 : p.rot - Math.PI / 2;
+
+        v.setVisible(true)
+            .setAlpha(info.alpha)
+            .setOrigin(0.5, 0)               // ボスの位置が根元。そこから下方向(回転後は狙う方向)へ伸ばす
+            .setDisplaySize(info.w, info.len)
+            .setPosition(p.x, info.top)
+            .setRotation(rot)
+            .setFlipY(false);
+    }
+
     // ───────── 同期 ─────────
 
     // ホストの飛び道具を、プール内の同じスロット番号でゲストへ送る。
@@ -1015,15 +1495,19 @@ export default class Boss2 extends BaseBoss {
 
         for (let i = 0; i < this.projs.length; i++) {
             const p = this.projs[i];
-            if (!p.active) continue;
+            // 出現待ち(delay)の間は、ゲスト側で表示しないので送らない(通信量を減らす)
+            if (!p.active || p.delay > 0) continue;
 
             const attackKey =
                 p.a === BOSS2_ATTACKS.iceSword ? "iceSword" :
                 p.a === BOSS2_ATTACKS.rainSword ? "rainSword" :
                 p.a === BOSS2_ATTACKS.iceBlockBig ? "iceBlockBig" :
                 p.a === BOSS2_ATTACKS.iceBlockSmall ? "iceBlockSmall" :
+                p.a === BOSS2_ATTACKS.iceHailPiece ? "iceHailPiece" :
                 p.a === BOSS2_ATTACKS.icicleUnder ? "icicleUnder" :
-                p.a === BOSS2_ATTACKS.icicle ? "icicle" : null;
+                p.a === BOSS2_ATTACKS.icicle ? "icicle" :
+                p.a === BOSS2_ATTACKS.beamThin ? "beamThin" :
+                p.a === BOSS2_ATTACKS.beamBig ? "beamBig" : null;
 
             projs.push({
                 i,
@@ -1041,23 +1525,31 @@ export default class Boss2 extends BaseBoss {
                 rs: p.rise,
                 h: p.hovering ? 1 : 0,
                 b: p.bossHover ? 1 : 0,
+                bm: p.beamMode === "big" ? 1 : 0,
             });
         }
 
-        return { projs };
+        return { projs, hh: this.hailHidden ? 1 : 0, p2: this.phase2 ? 1 : 0 };
     }
 
     // ゲスト側は攻撃判定を行わず、ホストから届いた座標・状態を描画する。
     applyExtraSync(d) {
+        // 瞬間移動で消えている間は、ゲスト側でもボスを隠す
+        this.hailHidden = !!d?.hh;
+        this.phase2 = !!d?.p2;
+
         const list = Array.isArray(d?.projs) ? d.projs : [];
         const received = new Map();
         const attackByKey = {
+            iceHailPiece: BOSS2_ATTACKS.iceHailPiece,
             icicleUnder: BOSS2_ATTACKS.icicleUnder,
             iceSword: BOSS2_ATTACKS.iceSword,
             rainSword: BOSS2_ATTACKS.rainSword,
             iceBlockBig: BOSS2_ATTACKS.iceBlockBig,
             iceBlockSmall: BOSS2_ATTACKS.iceBlockSmall,
             icicle: BOSS2_ATTACKS.icicle,
+            beamThin: BOSS2_ATTACKS.beamThin,
+            beamBig: BOSS2_ATTACKS.beamBig,
         };
 
         for (const src of list) {
@@ -1101,6 +1593,7 @@ export default class Boss2 extends BaseBoss {
             p.rise = Number(src.rs) || BLOCK_TRACK_RISE;
             p.hovering = !!src.h;
             p.bossHover = !!src.b;
+            p.beamMode = src.bm ? "big" : "thin";
         }
     }
 
@@ -1153,6 +1646,13 @@ export default class Boss2 extends BaseBoss {
                     h,
                 };
             }
+            case "beam": {
+                // 極太ビームの当たり範囲だけ白く表示する(細いビームは斜めなので表示しない)
+                if (p.beamMode !== "big") return null;
+                const info = this.beamInfo(p);
+                if (!info.hit) return null;
+                return { x: p.x, y: info.top + info.len / 2, w: info.w, h: info.len };
+            }
             default:
                 return null;
         }
@@ -1187,6 +1687,10 @@ export default class Boss2 extends BaseBoss {
 
     renderExtra() {
         this.drawProjectileHitboxes();
+        this.beamGraphics.clear();
+
+        // 瞬間移動で消えている間は、ボスの画像を見えなくする
+        this.view.setAlpha(this.hailHidden ? 0 : 1);
 
         for (let i = 0; i < this.projs.length; i++) {
             const p = this.projs[i];
@@ -1201,6 +1705,12 @@ export default class Boss2 extends BaseBoss {
 
             if (v.texture.key !== cfg.key) {
                 v.setTexture(cfg.key);
+            }
+
+            // ビームは専用の描画(縦長の画像を、太さと長さに合わせて引き伸ばす)
+            if (p.kind === "beam") {
+                this.renderBeam(p, v);
+                continue;
             }
 
             // つららは根元を地面に固定して伸びる。
@@ -1224,10 +1734,15 @@ export default class Boss2 extends BaseBoss {
                 sinkOffset = 28 * sinkProgress;
             }
 
+            // 雨の氷塊は、ほかの小さい氷塊よりさらに小さく表示する
+            const isHail = p.a === BOSS2_ATTACKS.iceHailPiece;
+            const dispW = isHail ? HAIL_PIECE_SIZE : cfg.w;
+            const dispH = isHail ? HAIL_PIECE_SIZE : cfg.h;
+
             v.setVisible(grow > 0)
                 .setAlpha(alpha)
                 .setOrigin(0.5, cfg.originY)
-                .setDisplaySize(cfg.w, cfg.h * grow)
+                .setDisplaySize(dispW, dispH * grow)
                 .setPosition(p.x, p.y + sinkOffset);
 
             if (p.kind === "sword") {
@@ -1245,8 +1760,24 @@ export default class Boss2 extends BaseBoss {
         const st = this.state;
         const inAction = st === BS.ACTIVE || st === BS.RECOVER;
 
+        // 最初の攻撃は、空中にいる間ずっとこの画像
+        if (a?.hail) return "boss2_firstattack";
+
+        // 第二形態への変身〜ビーム中は、空中にいる間ずっとこの画像
+        if (a?.beam) return "boss2_changedfire";
+
         if (a?.backstep) {
-            if (st === BS.TELEGRAPH) return "boss2_backstep";
+            if (st === BS.TELEGRAPH) {
+                // 予備動作中
+                if (this.frame <= BACKSTEP_STARTUP_FRAMES) {
+                    return "boss2_backstepstartup";
+                }
+
+                // 後退中
+                return "boss2_backstep";
+            }
+
+            // 着地後・攻撃中・後隙
             if (inAction) return "boss2_backstepattack";
         } else if (a?.block) {
             // 氷塊落とし・派生氷柱・ボス近くからの剣は同じモーション
@@ -1258,6 +1789,7 @@ export default class Boss2 extends BaseBoss {
         }
 
         // 氷の剣6本や、死亡・スタンの画像はまだないので待機画像で代用
-        return "boss2";
+        // 待機: 第二形態では boss2mood2
+        return this.phase2 ? "boss2_mood2" : "boss2";
     }
 }
