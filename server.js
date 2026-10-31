@@ -81,7 +81,7 @@ io.on("connection", (socket) => {
         socket.join(roomId);
         socket.data.roomId = roomId;
         rooms.set(roomId, {
-          hostId : sess.user_id,
+          hostId: sess.user_id,
           members: { [sess.user_id]: name },
           players: {},   // ステージ・クリア状況(userId ごと)
         });
@@ -192,11 +192,19 @@ io.on("connection", (socket) => {
         (n) => Number.isInteger(n) && n >= 0 && n < TEMPLATE_COUNT
       );
     if (!ok) return;
+    const MONSTER_TYPES = ["slime", "goblin"];
+    const monsters = Array.isArray(stage.monsters)
+      ? stage.monsters
+        .filter((m) => MONSTER_TYPES.includes(m?.type) && Number.isFinite(m?.x))
+        .slice(0, 100)
+        .map((m) => ({ type: m.type, x: Math.round(m.x) }))
+      : [];
 
     info.players[sess.user_id] = {
       worldId: stage.worldId === "B" ? "B" : "A",
       chunks: stage.chunks,
       dummyX: Number(stage.dummyX) || 700,
+      monsters,  
       cleared: false,
       clearedAt: null,
     };

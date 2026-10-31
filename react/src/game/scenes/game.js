@@ -3,6 +3,8 @@ import Fighter, { S } from "../combat/Fighter";
 import { FPS, STAMINA, FX } from "../combat/frameData";
 import { createTuningPanel } from "../debug/TuningPanel";
 import { createProgress, statsFor, grantXp, xpToNext, MAX_LEVEL } from "../combat/progress";
+import Monster from "../combat/Monster";
+import { MONSTERS, SPAWN } from "../combat/monsterData";
 const STEP = 1000 / FPS;
 // マップ生成用の基本設定
 const TILE_SIZE = 32;
@@ -147,13 +149,34 @@ export default class GameScene extends Phaser.Scene {
         let stage = this.registry.get("stage");
         if (!stage) {
             const worldId = this.registry.get("worldId") ?? "A";
+            // 位置と種類をランダムに決める(安全地帯は除く)
+            const pickType = () => {
+                let r = Math.random();
+                for (const [type, w] of Object.entries(SPAWN.weights)) {
+                    if ((r -= w) < 0) return type;
+                }
+                return "slime";
+            };
+
+            const monsters = [];
+            for (let i = SPAWN.safeChunks; i < TOTAL_CHUNKS - SPAWN.safeChunks; i++) {
+                if (Math.random() > SPAWN.chancePerChunk) continue;
+                // チャンク内の左右の端を避けて、10〜16列目あたりに置く
+                const col = randomInt(6, 16);
+                monsters.push({
+                    type: pickType(),
+                    x: i * CHUNK_WIDTH + col * TILE_SIZE + TILE_SIZE / 2,
+                });
+            }
             stage = {
                 worldId,
                 chunks: Array.from({ length: TOTAL_CHUNKS }, (_, i) =>
                     i < 2 || i >= TOTAL_CHUNKS - 2 ? 0 : randomInt(1, MAP_TEMPLATES.length - 1)
                 ),
                 dummyX: worldId === "B" ? 1200 : 700,
+                monsters,
                 cleared: false,
+
             };
             this.registry.set("stage", stage);
             this.socket.emit("saveStage", stage);
@@ -490,8 +513,16 @@ export default class GameScene extends Phaser.Scene {
                 texture: "enemy"
             }
         );
-        for (const f of [this.player, this.dummy]) {
-            // 地面は通常の衝突判定
+        // モンスターを生成(stage.monsters はサーバー復帰時も同じ内容)
+        this.monsters = [];
+        for (const m of stage.monsters ?? []) {
+            if (!MONSTERS[m.type]) continue;
+            const gy = groundYAt(m.x);
+            if (gy === null) continue;              // 穴の上には出さない
+            const mon = new Monster(this, m.x, gy - 60, m.type);
+            this.monsters.push(mon);
+        }
+        for (const f of [this.player, this.dummy, ...this.monsters]) {
             for (const segment of terrain) {
                 this.physics.add.collider(f.sprite, segment);
             }
@@ -566,8 +597,12 @@ export default class GameScene extends Phaser.Scene {
             this.cameras.main.shake(100, atk.shake ?? 0);
         };
         const onKill = (victim, attacker) => {
-            if (attacker === this.player && victim === this.dummy) {
+            if (attacker !== this.player) return;
+
+            if (victim === this.dummy) {
                 grantXp(this, this.player, 20);
+            } else if (victim instanceof Monster) {
+                grantXp(this, this.player, victim.def.xp);
             }
         };
         this.events.on("kill", onKill);
@@ -610,6 +645,7 @@ export default class GameScene extends Phaser.Scene {
         if (this.gameOver) {
             this.player.render();
             this.dummy.render();
+            for (const m of this.monsters) m.render();
             this.drawHud();
             return;
         }
@@ -629,6 +665,7 @@ export default class GameScene extends Phaser.Scene {
         }
         this.player.render();
         this.dummy.render();
+        for (const m of this.monsters) m.render();  
 
         // 停止中は被弾側を小刻みに震わせる
         if (this.hitStop > 0 && this.hitVictim) {
@@ -647,8 +684,13 @@ export default class GameScene extends Phaser.Scene {
         };
         this.pending = {};
         this.socket.emit("gameaction", { input, position: this.player.sprite.x });
-        this.player.tick(input, [this.dummy]);
+        // 変更前: this.player.tick(input, [this.dummy]);
+        const targets = [this.dummy, ...this.monsters.filter((m) => m.state !== S.DEAD)];
+        this.player.tick(input, targets);
         this.tickDummy();
+        this.tickMonsters();
+
+
 
         if (!this.stage.cleared && this.player.state !== S.DEAD
             && this.player.sprite.x >= this.worldWidth - 200) {
@@ -688,6 +730,15 @@ export default class GameScene extends Phaser.Scene {
         }
         d.tick({ x: 0 }, [this.player]);
     }
+    tickMonsters() {
+        for (const m of this.monsters) {
+            if (m.removed) continue;
+            m.think(this.player);
+
+            if (m.shouldRemove()) m.destroy();
+        }
+        this.monsters = this.monsters.filter((m) => !m.removed);
+    }
 
     triggerGameOver(message) {
         // 二重に実行しない
@@ -700,6 +751,7 @@ export default class GameScene extends Phaser.Scene {
         // キャラクターの動きを止める
         this.player.body.setVelocity(0, 0);
         this.dummy.body.setVelocity(0, 0);
+        for (const m of this.monsters) m.body.setVelocity(0, 0);
 
         // 物理演算を停止
         this.physics.world.pause();
