@@ -7,8 +7,8 @@ import BaseBoss, { BS } from "./BaseBoss";
 const ONE_SHOT_EVENTS = true;
 
 // ───────── Boss2 の調整用の数値 ─────────
-const WALK_SPEED = 2;          // 歩く速さ(px/フレーム)
-const CLOSE_RANGE = 170;       // この距離以内=近距離、それより遠い=遠距離
+const WALK_SPEED = 0.55;          // 歩く速さ(px/フレーム)
+const CLOSE_RANGE = 90;       // この距離以内=近距離、それより遠い=遠距離
 
 // 遠距離で選ぶ攻撃の割合(合計1にすること)
 const FAR_BLOCK_CHANCE = 0.5;  // 氷塊系(選択後、さらに3種類から均等抽選)
@@ -37,11 +37,11 @@ const HAIL_START_Y = -450;         // 氷塊が降り始める高さ(画面の�
 
 // バックステップ攻撃(近距離)
 const BACKSTEP_SPEED = 6;
-const BACKSTEP_STARTUP_FRAMES = 12; // 予備動作の長さ(フレーム)
+const BACKSTEP_STARTUP_FRAMES = 9; // 予備動作の長さ(フレーム)
 const BACKSTEP_EDGE_MARGIN = 20;    // ステージ端の柱にめり込まないための余白(px)
 const FIRST_VOLLEY_AT = 6; // 後退を始めてから1回目の剣を撃つまでのフレーム数
 const SWORD_HEIGHTS = [30, 85, 140];  // 剣を撃つ高さ(地面から)
-
+const BACKSTEP_CORNER_SPACE = 120; // 後ろの壁までこれ以下しかなければ「追い込まれた」とみなし、中央へ下がる(px)
 // 氷塊
 const BIG_BLOCK_COUNTS = [4, 5];      // 降らせる大きい氷塊の数(どちらかをランダム)
 const BLOCK_STAGGER = 12;             // 氷塊が降り始める間隔(フレーム)
@@ -133,7 +133,7 @@ export const BOSS2_ATTACKS = {
     backstepAttack: {
         noBody: true, backstep: true,
         // startup を長くして2回目を遅らせ、recovery を長くして後隙を増やした
-        startup: 60, active: 10, recovery: 45,
+        startup: 45, active: 10, recovery: 45,
         ...NONE,
     },
 
@@ -182,7 +182,7 @@ export const BOSS2_ATTACKS = {
     // 通常iceShock: ボスの左右からステージ端へ向かって氷柱を走らせる。
     iceShock: {
         noBody: true, shock: true,
-        startup: 16, active: 45, recovery: 30,
+        startup: 24, active: 45, recovery: 25,
         ...NONE,
     },
 
@@ -532,22 +532,45 @@ export default class Boss2 extends BaseBoss {
         }
 
         if (!this.attack?.backstep) return;
-
-        // 最初の数フレームは予備動作だけで、まだ後退しない
+         // 最初の数フレームは予備動作だけで、まだ後退しない
         if (this.frame <= BACKSTEP_STARTUP_FRAMES) return;
-
-        // 予備動作が終わったら後ろへ下がる
-        this.moveBody(-this.facing * BACKSTEP_SPEED, 0);
-
-        // ステージの外(柱の向こう)へ出ないように止める
+                // 予備動作が終わったら後ろへ下がる
         const { arenaLeft, arenaRight } = this.cfg;
         const half = this.sprite.width / 2 + BACKSTEP_EDGE_MARGIN;
+
+        // 下がり始める最初の1フレームだけ、向きを決める(途中で向きが変わって震えないように)
+               // 下がり始める最初の1フレームだけ、向きを決める(途中で向きが変わって震えないように)
+        if (this.frame === BACKSTEP_STARTUP_FRAMES + 1) {
+            // 剣を撃つ向きは、今の向き(相手のいる側)のまま覚えておく
+            this.volleyDir = this.facing;
+
+            let dir = -this.facing;   // 普通は相手と反対側へ
+
+            // 後ろの壁までの空きが少ないとき(追い込まれたとき)は、中央へ向かって下がる
+            const spaceBehind =
+                dir < 0
+                    ? this.sprite.x - (arenaLeft + half)
+                    : (arenaRight - half) - this.sprite.x;
+
+            if (spaceBehind <= BACKSTEP_CORNER_SPACE) {
+                dir = Math.sign((arenaLeft + arenaRight) / 2 - this.sprite.x) || 1;
+
+                // 中央へ下がるときは、進む向きと反対の「外側(壁側)」を向く
+                this.facing = -dir;
+            }
+
+            this.backstepDir = dir;
+        }
+
+        this.moveBody(this.backstepDir * BACKSTEP_SPEED, 0);
+
+        // ステージの外(柱の向こう)へ出ないように止める
         this.sprite.x = Phaser.Math.Clamp(
             this.sprite.x,
             arenaLeft + half,
             arenaRight - half
         );
-
+        
         // 後退を始めてから指定フレーム後に1回目の剣を撃つ
         if (this.frame === BACKSTEP_STARTUP_FRAMES + FIRST_VOLLEY_AT) {
             this.fireVolley();
@@ -720,7 +743,7 @@ export default class Boss2 extends BaseBoss {
     fireVolley() {
         const a = BOSS2_ATTACKS.iceSword;
         const half = this.sprite.width / 2;
-
+        const dir = this.volleyDir ?? this.facing;
         for (const h of SWORD_HEIGHTS) {
             const p = this.spawnProj("sword", {
                 a,
@@ -1786,6 +1809,9 @@ export default class Boss2 extends BaseBoss {
         } else if (a?.shock) {
             if (st === BS.TELEGRAPH) return "boss2_iceshockwait";
             if (inAction) return "boss2_iceshockattack";
+        } else if(a?.rain) { 
+            //頭上に剣を浮かせる攻撃のモーション
+            if(st === BS.TELEGRAPH || inAction) return "boss2_iceblockattack";
         }
 
         // 氷の剣6本や、死亡・スタンの画像はまだないので待機画像で代用
