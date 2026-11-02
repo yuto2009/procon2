@@ -63,7 +63,7 @@ export default class Fighter {
         scene,
         x,
         y,
-        { color, texture, maxHp = 100, damageMul = 1 }
+        { color, texture, maxHp = 100, maxStamina = STAMINA.max, damageMul = 1, weapon = "sowrd" }
     ) {
         this.scene = scene;
         this.baseColor = color;
@@ -91,8 +91,10 @@ export default class Fighter {
             .setVisible(false);
 
         this.maxHp = maxHp;
+        this.maxStamina = maxStamina;
         this.damageMul = damageMul;
-        this.weapon = "sword";
+        this.weapon = weapon;
+        this.arrows = [];
 
         this.remote = false;
         this.remoteOnGround = true;
@@ -102,11 +104,12 @@ export default class Fighter {
     }
 
     reset(x, y) {
+        this.clearArrows();
         this.sprite.setPosition(x, y);
         this.body.setVelocity(0, 0);
 
         this.hp = this.maxHp;
-        this.stamina = STAMINA.max;
+        this.stamina = this.maxStamina;
         this.regenCooldown = 0;
         this.facing = 1;
         this.attack = null;
@@ -218,7 +221,7 @@ export default class Fighter {
 
         if (action === "parry") return this.startParry();
         if (action === "dodge") return this.startDodge(input.x || this.facing);
-        if (action === "sword") return this.startAttack("sword");
+        if (action === "sword") return this.startAttack("weapon");
         if (action === "fist") return this.startAttack("fist");
     }
 
@@ -251,6 +254,17 @@ export default class Fighter {
         const f = this.frame;
 
         this.body.setVelocityX(0);
+
+        if (a.ranged && f === a.startup) this.shootArrow(a);
+
+        // 変更前: if (f >= a.startup && f < a.startup + a.active) {
+        if (!a.ranged && f >= a.startup && f < a.startup + a.active) {
+            // ...中身はそのまま
+        }
+
+        if (f >= a.startup + a.active + a.recovery) {
+            this.enter(S.IDLE);
+        }
 
         if (f >= a.startup && f < a.startup + a.active) {
             const rect = this.hitRect(a);
@@ -315,7 +329,7 @@ export default class Fighter {
             attackerIsFront
         ) {
             this.stamina = Math.min(
-                STAMINA.max,
+                this.maxStamina,
                 this.stamina + PARRY.staminaGain
             );
 
@@ -350,11 +364,14 @@ export default class Fighter {
     }
 
     // レベルアップ時に能力値を反映する
-    applyStats({ maxHp, damageMul }) {
-        const increase = Math.max(0, maxHp - this.maxHp);
+    applyStats({ maxHp, maxStamina, damageMul }) {
+        const hpUp = Math.max(0, maxHp - this.maxHp);
+        const staUp = Math.max(0, maxStamina - this.maxStamina);
         this.maxHp = maxHp;
+        this.maxStamina = maxStamina;
         this.damageMul = damageMul;
-        this.hp = Math.min(this.maxHp, this.hp + increase); // 増えた分だけ回復
+        this.hp = Math.min(this.maxHp, this.hp + hpUp);
+        this.stamina = Math.min(this.maxStamina, this.stamina + staUp); // 増えた分だけ回復
     }
 
     stun(frames) {
@@ -408,7 +425,7 @@ export default class Fighter {
         }
 
         this.stamina = Math.min(
-            STAMINA.max,
+            this.maxStamina,
             this.stamina + STAMINA.regenPerFrame
         );
     }

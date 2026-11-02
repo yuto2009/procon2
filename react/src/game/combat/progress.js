@@ -7,7 +7,8 @@ export const xpToNext = (level) => 30 + level * level * 10;
 export function statsFor(level) {
   return {
     maxHp: 100 + (level - 1) * 10,
-    damageMul: 10 + (level - 1) * 0.20,
+    maxStamina: 100 + (level - 1) * 5,
+    damageMul: 1 + (level - 1) * 0.08,
   };
 }
 
