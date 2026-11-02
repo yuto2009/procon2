@@ -1,4 +1,4 @@
-export const MAX_LEVEL = 30;
+export const MAX_LEVEL = 300;
 
 // 次のレベルまでに必要な経験値(Lv1→2: 40, Lv2→3: 70, Lv5→6: 280 ...)
 export const xpToNext = (level) => 30 + level * level * 10;
@@ -7,7 +7,7 @@ export const xpToNext = (level) => 30 + level * level * 10;
 export function statsFor(level) {
   return {
     maxHp: 100 + (level - 1) * 10,
-    damageMul: 1 + (level - 1) * 0.08,
+    damageMul: 10 + (level - 1) * 0.20,
   };
 }
 

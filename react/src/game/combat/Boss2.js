@@ -37,9 +37,9 @@ const HAIL_START_Y = -450;         // 氷塊が降り始める高さ(画面の�
 
 // バックステップ攻撃(近距離)
 const BACKSTEP_SPEED = 6;
-const BACKSTEP_STARTUP_FRAMES = 9; // 予備動作の長さ(フレーム)
+const BACKSTEP_STARTUP_FRAMES = 13; // 予備動作の長さ(フレーム)
 const BACKSTEP_EDGE_MARGIN = 20;    // ステージ端の柱にめり込まないための余白(px)
-const FIRST_VOLLEY_AT = 6; // 後退を始めてから1回目の剣を撃つまでのフレーム数
+const FIRST_VOLLEY_AT = 8; // 後退を始めてから1回目の剣を撃つまでのフレーム数
 const SWORD_HEIGHTS = [30, 85, 140];  // 剣を撃つ高さ(地面から)
 const BACKSTEP_CORNER_SPACE = 120; // 後ろの壁までこれ以下しかなければ「追い込まれた」とみなし、中央へ下がる(px)
 // 氷塊

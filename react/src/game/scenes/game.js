@@ -600,7 +600,7 @@ export default class GameScene extends Phaser.Scene {
             if (attacker !== this.player) return;
 
             if (victim === this.dummy) {
-                grantXp(this, this.player, 20);
+                grantXp(this, this.player, 20000000000);
             } else if (victim instanceof Monster) {
                 grantXp(this, this.player, victim.def.xp);
             }
