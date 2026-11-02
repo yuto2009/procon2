@@ -63,7 +63,7 @@ export default class Fighter {
         scene,
         x,
         y,
-        { color, texture, maxHp = 100, damageMul = 1 }
+        { color, texture, maxHp = 100, maxStamina = STAMINA.max, damageMul = 1 }
     ) {
         this.scene = scene;
         this.baseColor = color;
@@ -91,6 +91,7 @@ export default class Fighter {
             .setVisible(false);
 
         this.maxHp = maxHp;
+        this.maxStamina = maxStamina;
         this.damageMul = damageMul;
         this.weapon = "sword";
 
@@ -106,7 +107,7 @@ export default class Fighter {
         this.body.setVelocity(0, 0);
 
         this.hp = this.maxHp;
-        this.stamina = STAMINA.max;
+        this.stamina = this.maxStamina;
         this.regenCooldown = 0;
         this.facing = 1;
         this.attack = null;
@@ -315,7 +316,7 @@ export default class Fighter {
             attackerIsFront
         ) {
             this.stamina = Math.min(
-                STAMINA.max,
+                this.maxStamina,
                 this.stamina + PARRY.staminaGain
             );
 
@@ -350,11 +351,14 @@ export default class Fighter {
     }
 
     // レベルアップ時に能力値を反映する
-    applyStats({ maxHp, damageMul }) {
-        const increase = Math.max(0, maxHp - this.maxHp);
+    applyStats({ maxHp, maxStamina, damageMul }) {
+        const hpUp = Math.max(0, maxHp - this.maxHp);
+        const staUp = Math.max(0, maxStamina - this.maxStamina);
         this.maxHp = maxHp;
+        this.maxStamina = maxStamina;
         this.damageMul = damageMul;
-        this.hp = Math.min(this.maxHp, this.hp + increase); // 増えた分だけ回復
+        this.hp = Math.min(this.maxHp, this.hp + hpUp);
+        this.stamina = Math.min(this.maxStamina, this.stamina + staUp); // 増えた分だけ回復
     }
 
     stun(frames) {
@@ -408,7 +412,7 @@ export default class Fighter {
         }
 
         this.stamina = Math.min(
-            STAMINA.max,
+            this.maxStamina,
             this.stamina + STAMINA.regenPerFrame
         );
     }

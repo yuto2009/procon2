@@ -502,6 +502,7 @@ export default class GameScene extends Phaser.Scene {
             color: 0x66aaff,
             texture: "player",
             maxHp: stats.maxHp,
+            maxStamina: stats.maxStamina,
             damageMul: stats.damageMul,
         });
         this.dummy = new Fighter(
@@ -890,7 +891,7 @@ export default class GameScene extends Phaser.Scene {
             g.fillStyle(color).fillRect(x + 2, y + 2, (w - 4) * Math.max(0, ratio), h - 4);
         };
         bar(20, 30, 220, 18, this.player.hp / this.player.maxHp, 0x44cc66);
-        bar(20, 54, 220, 12, this.player.stamina / STAMINA.max, 0xffcc33);
+        bar(20, 54, 220, 12, this.player.stamina / this.player.maxStamina, 0xffcc33);
         bar(560, 30, 220, 18, this.dummy.hp / this.dummy.maxHp, 0xcc4444);
         const p = this.registry.get("progress");
         const need = xpToNext(p.level);
