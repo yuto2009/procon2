@@ -503,6 +503,7 @@ export default class GameScene extends Phaser.Scene {
             texture: "player",
             maxHp: stats.maxHp,
             damageMul: stats.damageMul,
+            weapon: this.registry.get("weapon") ?? "sword",
         });
         this.dummy = new Fighter(
             this,

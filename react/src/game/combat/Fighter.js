@@ -63,7 +63,7 @@ export default class Fighter {
         scene,
         x,
         y,
-        { color, texture, maxHp = 100, damageMul = 1 }
+        { color, texture, maxHp = 100, maxStamina = STAMINA.max, damageMul = 1, weapon = "sword" }
     ) {
         this.scene = scene;
         this.baseColor = color;
@@ -168,6 +168,9 @@ export default class Fighter {
                 break;
         }
 
+        this.tickArrows(targets);
+        this.updateStamina();
+
         this.updateStamina();
     }
 
@@ -218,7 +221,7 @@ export default class Fighter {
 
         if (action === "parry") return this.startParry();
         if (action === "dodge") return this.startDodge(input.x || this.facing);
-        if (action === "sword") return this.startAttack("sword");
+        if (action === "sword") return this.startAttack(this.weapon);
         if (action === "fist") return this.startAttack("fist");
     }
 
@@ -252,7 +255,11 @@ export default class Fighter {
 
         this.body.setVelocityX(0);
 
-        if (f >= a.startup && f < a.startup + a.active) {
+        // 弓:構えが終わった瞬間に矢を撃つ
+        if (a.ranged && f === a.startup) this.shootArrow(a);
+
+        // 近接:弓以外だけ当たり判定を出す
+        if (!a.ranged && f >= a.startup && f < a.startup + a.active) {
             const rect = this.hitRect(a);
 
             if (DEBUG) {
@@ -292,6 +299,41 @@ export default class Fighter {
             a.range,
             a.height
         );
+    }
+
+    shootArrow(a) {
+        const dir = this.facing;
+        const view = this.scene.add
+            .rectangle(this.sprite.x + dir * 20, this.sprite.y - 6, 22, 4, 0xffee99)
+            .setDepth(6);
+        this.arrows.push({ view, a, dir, traveled: 0 });
+    }
+
+    tickArrows(targets) {
+        for (const ar of this.arrows) {
+            ar.view.x += ar.dir * ar.a.speed;
+            ar.traveled += ar.a.speed;
+
+            const rect = ar.view.getBounds();
+            for (const t of targets) {
+                if (t.state === S.DEAD) continue;
+                if (Phaser.Geom.Intersects.RectangleToRectangle(rect, t.sprite.getBounds())) {
+                    t.receiveHit(this, ar.a);
+                    ar.dead = true;
+                    break;
+                }
+            }
+
+            if (ar.traveled >= ar.a.range) ar.dead = true;
+        }
+
+        for (const ar of this.arrows) if (ar.dead) ar.view.destroy();
+        this.arrows = this.arrows.filter((ar) => !ar.dead);
+    }
+
+    clearArrows() {
+        for (const ar of this.arrows) ar.view.destroy();
+        this.arrows = [];
     }
 
     receiveHit(attacker, a) {
@@ -484,7 +526,7 @@ export default class Fighter {
         }
 
         if (this.state === S.ATTACK && this.attack) {
-            const frames = FRAMES[this.attackKey];
+            const frames = FRAMES[this.attackKey] ?? FRAMES.sword;
 
             if (frames) {
                 const index = Math.min(

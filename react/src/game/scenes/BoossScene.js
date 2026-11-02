@@ -296,6 +296,7 @@ export default class BossScene extends Phaser.Scene {
             texture: "player",
             maxHp: stats.maxHp,
             damageMul: stats.damageMul,
+            weapon: this.registry.get("weapon") ?? "sword",
         });
 
         this.remote = new Fighter(

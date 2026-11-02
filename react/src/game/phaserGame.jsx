@@ -5,6 +5,7 @@ import NameForm from "./scenes/nameform";
 import WaitingScene from "./scenes/WaitingScene";
 import GameScene from "./scenes/game";
 import BossScene from "./scenes/BoossScene";
+import WeaponSelectScene from "./scenes/WeaponSelectScene";
 function PhaserGame() {
     const gameRef = useRef(null);
 
@@ -23,7 +24,7 @@ function PhaserGame() {
             },
                         pixelArt: true,      // 拡大してもにじまない
             roundPixels: true,   // カメラ追従でドットがちらつかない
-            scene: [TitleScene, NameForm, WaitingScene,GameScene,BossScene],
+            scene: [TitleScene, NameForm, WaitingScene,WeaponSelectScene,GameScene,BossScene],
         };
 
         const game = new Phaser.Game(config);
