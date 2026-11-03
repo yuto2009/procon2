@@ -95,7 +95,7 @@ export default class WaitingScene extends Phaser.Scene {
                 this.registry.set("stage", null);
                 this.registry.set("LastPosition", null);
             }
-            this.scene.start("GameScene");
+            this.scene.start("WeaponSelectScene");
         }
         startButton.node.addEventListener("click", () => {
             if (isReady == false) {

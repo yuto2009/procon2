@@ -92,7 +92,8 @@ export default class Fighter {
 
         this.maxHp = maxHp;
         this.damageMul = damageMul;
-        this.weapon = "sword";
+        this.weapon = weapon;
+        this.arrows = [];
 
         this.remote = false;
         this.remoteOnGround = true;
@@ -102,6 +103,7 @@ export default class Fighter {
     }
 
     reset(x, y) {
+        this.clearArrows();
         this.sprite.setPosition(x, y);
         this.body.setVelocity(0, 0);
 
@@ -171,7 +173,6 @@ export default class Fighter {
         this.tickArrows(targets);
         this.updateStamina();
 
-        this.updateStamina();
     }
 
     bufferInput(input) {
@@ -393,11 +394,14 @@ export default class Fighter {
     }
 
     // レベルアップ時に能力値を反映する
-    applyStats({ maxHp, damageMul }) {
-        const increase = Math.max(0, maxHp - this.maxHp);
+    applyStats({ maxHp, maxStamina, damageMul }) {
+        const hpUp = Math.max(0, maxHp - this.maxHp);
+        const staUp = Math.max(0, maxStamina - this.maxStamina);
         this.maxHp = maxHp;
+        this.maxStamina = maxStamina;
         this.damageMul = damageMul;
-        this.hp = Math.min(this.maxHp, this.hp + increase); // 増えた分だけ回復
+        this.hp = Math.min(this.maxHp, this.hp + hpUp);
+        this.stamina = Math.min(this.maxStamina, this.stamina + staUp);
     }
 
     stun(frames) {
