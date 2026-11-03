@@ -7,7 +7,10 @@ import { DODGE } from "./frameData";
 // true : 最初の確定攻撃(氷塊の雨)と、HP1/4以下の第二形態への変身を行う
 // false: どちらも行わない(テスト用。最初から通常の行動を繰り返す)
 const ONE_SHOT_EVENTS = true;
-
+// true : 戦闘開始から第二形態にする(最初の氷塊の雨も飛ばす)
+const START_IN_PHASE2 = true;
+// true : HPが PHASE2_HP_RATIO 以下になったとき、変身攻撃(ビーム)をせずにすぐ第二形態にする
+const SKIP_PHASE2_TRANSFORM_ATTACK = true;
 // ───────── Boss2 の調整用の数値 ─────────
 const WALK_SPEED = 0.55;          // 歩く速さ(px/フレーム)
 const CLOSE_RANGE = 90;       // この距離以内=近距離、それより遠い=遠距離
@@ -125,11 +128,6 @@ const FOLLOW_PUNCH_CHANCE = 0.5;  // 足攻撃がヒットしたあと、パン�
 const FOOT_FIRE_SIDE = 0;        // 床の炎(floorfire)を出す側。-1=ボスの後ろ / 1=ボスの前 / 0=ボスと同じ位置
 const BODY_W = 140;               // ボス本体の横幅(px)。足攻撃の本体の判定の横幅もこれに合わせる
 
-// ───────── 動作確認用スイッチ ─────────
-// true : 戦闘開始から第二形態にする(最初の氷塊の雨も飛ばす)
-const START_IN_PHASE2 = true;
-// true : HPが PHASE2_HP_RATIO 以下になったとき、変身攻撃(ビーム)をせずにすぐ第二形態にする
-const SKIP_PHASE2_TRANSFORM_ATTACK = true;
 const FIRE_IMPACT_HEIGHT = 80;    // パンチ・サイドキックの衝撃(fireimpact)の中心の、地面からの高さ(px)
 const UPPER_OPEN_CHANCE = 0.6;    // 第二形態の近距離で、足攻撃の代わりにアッパーから始める確率
 const MELEE_FACE_LOCK = 6;        // 前隙の最後のこのフレーム数だけは向きを固定する(それより前は相手の向きに合わせ続ける)
