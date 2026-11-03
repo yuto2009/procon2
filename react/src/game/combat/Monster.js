@@ -1,5 +1,8 @@
 import Fighter, { S } from "./Fighter";
 import { MONSTERS } from "./monsterData";
+import { generateCave, groundY, TILE } from "../map/mapgen";
+import { getTheme } from "../map/mapThemes";
+import { buildCave, buildTorches, buildAtmosphere } from "../map/MapRenderer";
 
 export default class Monster extends Fighter {
     constructor(scene, x, y, type) {

@@ -185,12 +185,8 @@ io.on("connection", (socket) => {
     if (info.players[sess.user_id]) return;
 
     // 最低限の検証(巨大な値や不正な番号を弾く)
-    const ok =
-      Array.isArray(stage?.chunks) &&
-      stage.chunks.length <= 200 &&
-      stage.chunks.every(
-        (n) => Number.isInteger(n) && n >= 0 && n < TEMPLATE_COUNT
-      );
+    const ok = Number.isInteger(stage?.seed) && stage.seed > 0 && stage.seed < 2 ** 31;
+    if (!ok) return;
     if (!ok) return;
     const MONSTER_TYPES = ["slime", "goblin"];
     const monsters = Array.isArray(stage.monsters)
@@ -202,9 +198,9 @@ io.on("connection", (socket) => {
 
     info.players[sess.user_id] = {
       worldId: stage.worldId === "B" ? "B" : "A",
-      chunks: stage.chunks,
+      seed: stage.seed,                 // chunks の代わり
       dummyX: Number(stage.dummyX) || 700,
-      monsters,  
+      monsters,
       cleared: false,
       clearedAt: null,
     };
