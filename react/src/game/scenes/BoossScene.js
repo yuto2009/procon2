@@ -79,7 +79,7 @@ export default class BossScene extends Phaser.Scene {
         };
 
         bar(20, 560, 220, 18, this.player.hp / this.player.maxHp, 0x44cc66);
-        bar(20, 582, 220, 12, this.player.stamina / this.player.maxStamina, 0xffcc33);
+        bar(20, 582, 220, 12, this.player.stamina / STAMINA.max, 0xffcc33);
         const p = this.registry.get("progress");
         const need = xpToNext(p.level);
         bar(20, 600 - 4, 220, 4, p.level >= MAX_LEVEL ? 1 : p.xp / need, 0x66aaff);
@@ -295,7 +295,6 @@ export default class BossScene extends Phaser.Scene {
             color: role === "guest" ? 0xffcc66 : 0x66aaff,
             texture: "player",
             maxHp: stats.maxHp,
-            maxStamina: stats.maxStamina,
             damageMul: stats.damageMul,
         });
 
