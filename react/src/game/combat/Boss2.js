@@ -11,6 +11,9 @@ const ONE_SHOT_EVENTS = true;
 const START_IN_PHASE2 = true;
 // true : HPが PHASE2_HP_RATIO 以下になったとき、変身攻撃(ビーム)をせずにすぐ第二形態にする
 const SKIP_PHASE2_TRANSFORM_ATTACK = true;
+// 炎エフェクトのON/OFF(OFFにすると、その絵も当たり判定も出ません)
+const FLOOR_FIRE_ON = true;   // 足攻撃の床の炎(floorfire)
+const IMPACT_FIRE_ON = true;  // パンチ・サイドキックの衝撃(fireimpact)
 // ───────── Boss2 の調整用の数値 ─────────
 const WALK_SPEED = 0.55;          // 歩く速さ(px/フレーム)
 const CLOSE_RANGE = 90;       // この距離以内=近距離、それより遠い=遠距離
@@ -126,7 +129,7 @@ const BEAM_BIG_HOLD = 4;          // 画面全体に残るフレーム数
 // 足攻撃(fireFoot)が当たると、半々でパンチ(firePunch)かサイドキック(fireSideKick)へつながる
 const FOLLOW_PUNCH_CHANCE = 0.5;  // 足攻撃がヒットしたあと、パンチを選ぶ確率(残りはサイドキック)
 const FOOT_FIRE_SIDE = 0;        // 床の炎(floorfire)を出す側。-1=ボスの後ろ / 1=ボスの前 / 0=ボスと同じ位置
-const BODY_W = 140;               // ボス本体の横幅(px)。足攻撃の本体の判定の横幅もこれに合わせる
+const BODY_W = 145;               // ボス本体の横幅(px)。足攻撃の本体の判定の横幅もこれに合わせる
 
 const FIRE_IMPACT_HEIGHT = 80;    // パンチ・サイドキックの衝撃(fireimpact)の中心の、地面からの高さ(px)
 const UPPER_OPEN_CHANCE = 0.6;    // 第二形態の近距離で、足攻撃の代わりにアッパーから始める確率
@@ -223,8 +226,9 @@ export const BOSS2_ATTACKS = {
     // 本体の蹴りか床の炎のどちらかがヒットすると、後隙を飛ばしてパンチかサイドキックへつながる。
     fireFoot: {
         fireMelee: true, fireFoot: true,
-        startup: 24, active: 8, recovery: 30,
-        range: BODY_W, height: 60,   // 横幅はボス本体と同じ
+        startup: 18, active: 8, recovery: 30,
+        range: BODY_W + 40, height: 150,    // 横幅はボス本体と同じ
+        pull: BODY_W + 20,
         damage: 35, stamina: 0, hitstun: 20, knockback: 340,
         hitStop: 0, shake: 0.008,
     },
@@ -232,18 +236,18 @@ export const BOSS2_ATTACKS = {
     // パンチ: 前隙 boss2ready → 攻撃・後隙 boss2firepunch。衝撃(fireImpactHit)も出る。
     firePunch: {
         fireMelee: true, firePunch: true,
-        startup: 20, active: 8, recovery: 34,
+        startup: 15, active: 8, recovery: 34,
         pull: BODY_W / 2,   // 判定をボスの中心から出す(体の端ではなく中心から前へ伸びる)
-        range: 100, height: 120,
-        damage: 60, stamina: 0, hitstun: 22, knockback: 900,
+        range: 150, height: 120,
+        damage: 60, stamina: 0, hitstun: 22, knockback: 1200,
         hitStop: 0, shake: 0.01,
     },
 
     // サイドキック: 前隙 boss2sidekickstartup → 攻撃・後隙 boss2sidekickattack。衝撃も出る。
     fireSideKick: {
         fireMelee: true, fireSideKick: true,
-        startup: 20, active: 8, recovery: 34,
-        range: 110, height: 180,
+        startup: 15, active: 8, recovery: 34,
+        range: 150, height: 180,
         pull: BODY_W / 2,   // 判定をボスの中心から出す(体の端ではなく中心から前へ伸びる)
         launch: 700,   // 食らうと上へ浮く強さ(Fighter.js の receiveHit が使う)
         damage: 55, stamina: 0, hitstun: 40, knockback: 900,
@@ -255,8 +259,8 @@ export const BOSS2_ATTACKS = {
     // 食らった相手をボスの頭の高さくらいまで打ち上げる。ヒットしたら追撃のサイドキックへつながる。
     fireUpper: {
         fireMelee: true, fireUpper: true,
-        startup: 20, active: 8, recovery: 40,
-        range: 100, height: 110,
+        startup: 15, active: 8, recovery: 40,
+        range: 120, height: 120,
         pull: 50,      // 判定をボスの体の方へ寄せる距離(px)。大きいほど体に近い
         launch: 600,   // 打ち上げの強さ(Fighter.js の receiveHit が使う)
         damage: 30, stamina: 0, hitstun: 60, knockback: 120,
@@ -265,16 +269,16 @@ export const BOSS2_ATTACKS = {
 
     // 足攻撃のエフェクト: 床の炎(上向き)の当たり判定
     floorFireHit: {
-        projectile: true, parryable: false,
-        range: 210, height: 90,   // 足攻撃の本体(140×60)の1.5倍
+        projectile: true, parryable: true,
+        range: 275, height: 90,   // 足攻撃の本体(140×60)の1.5倍
         damage: 30, stamina: 0, hitstun: 20, knockback: 240,
         hitStop: 0, shake: 0.008,
     },
 
     // パンチ・サイドキックのエフェクト: 衝撃(左向きの絵)の当たり判定
     fireImpactHit: {
-        projectile: true, parryable: false,
-        range: 210, height: 120,   // 床の炎と同じ大きさ
+        projectile: true, parryable: true,
+        range: 180 , height: 120,   // 床の炎と同じ大きさ
         damage: 30, stamina: 0, hitstun: 20, knockback: 260,
         hitStop: 0, shake: 0.008,
     },
@@ -350,9 +354,10 @@ const VIEW = {
     blockTrackIcicle: { key: "boss2_icicle", w: 50, h: 110, originY: 1 },
     beam:   { key: "boss2_firebeam",      w: 1,   h: 1,   originY: 0.5 },
     // 炎コンボのエフェクト。fireFx は床の炎(上向きの絵・根元を地面に置く)
-    fireFx:     { key: "boss2_floorfire",  w: 200, h: 300, originY: 1 },
+    fireFx:     { key: "boss2_floorfire",  w: 270, h: 450, originY: 1 },
     // 衝撃(左向きの絵)。fireFx の fx が "impact" のときに使う
-    fireImpact: { key: "boss2_fireimpact", w: 120, h: 80,  originY: 0.4 },
+    fireImpact: { key: "boss2_fireimpact", w: 190, h: 140,  originY: 0.5
+ },
 };
 
 function blankProj() {
@@ -1014,6 +1019,7 @@ faceForMelee() {
         const dir = this.facing;
 
         if (a.fireFoot) {
+            if (!FLOOR_FIRE_ON) return;
             // 足攻撃: 床の炎(上向き)。FOOT_FIRE_SIDE で後ろ(-1)か前(1)かを選ぶ
             const fa = BOSS2_ATTACKS.floorFireHit;
 
@@ -1027,7 +1033,7 @@ faceForMelee() {
             });
             return;
         }
-
+        if (!IMPACT_FIRE_ON) return;
         // パンチ・サイドキック: 前方に衝撃(左向きの絵)
         const ia = BOSS2_ATTACKS.fireImpactHit;
 
@@ -1036,7 +1042,7 @@ faceForMelee() {
             fx: "impact",
             dir,
             life: a.active,
-            x: this.sprite.x + dir * (half + ia.range / 2 - (a.pull ?? 0)),
+            x: this.sprite.x + dir * (half + ia.range / 2 - (a.pull ?? 0) - 60),
             y: this.groundY - FIRE_IMPACT_HEIGHT,
         });
     }
