@@ -338,6 +338,7 @@ export default class Fighter {
 
         const dir = Math.sign(this.sprite.x - attacker.sprite.x) || 1;
         this.body.setVelocityX(dir * a.knockback);
+        if (a.launch) this.body.setVelocityY(-a.launch);
         this.flashLeft = FX.flashFrames;
         this.scene.events.emit("hit", this, attacker, a);
         if (this.hp <= 0) {

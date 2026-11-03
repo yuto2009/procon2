@@ -91,7 +91,7 @@ const FIRST_GROUP = [2, 3];           // 最初に撃つ2本(真ん中の2本)
 const PROJ_POOL = 200;                // 同時に存在できる飛び道具の最大数(氷塊の雨で多く使う)
 
 // ───────── 第二形態(HPがこの割合以下で発動) ─────────
-const PHASE2_HP_RATIO = 0.75;
+const PHASE2_HP_RATIO = 0.99;
 
 // ビーム: 最初は遅く、だんだん速く。間隔が THICK_AT 以下になったら極太ビームに切り替える
 const BEAM_INTERVAL_START = 70;   // 1発目→2発目の間隔(フレーム)
@@ -116,6 +116,19 @@ const BEAM_BIG_DOWN = 36;         // 真下に撃ち続ける時間(横に避け
 const BEAM_BIG_SPREAD = 6;        // 画面全体へ広がるフレーム数
 const BEAM_BIG_HOLD = 4;          // 画面全体に残るフレーム数
 // ※ SPREAD + HOLD = 10 フレーム。回避の無敵(DODGE.iframes = 10)で避けられる長さ
+
+// ───────── 第二形態: 近距離の炎コンボ ─────────
+// 足攻撃(fireFoot)が当たると、半々でパンチ(firePunch)かサイドキック(fireSideKick)へつながる
+const FOLLOW_PUNCH_CHANCE = 0.5;  // 足攻撃がヒットしたあと、パンチを選ぶ確率(残りはサイドキック)
+const FOOT_FIRE_SIDE = 0;        // 床の炎(floorfire)を出す側。-1=ボスの後ろ / 1=ボスの前 / 0=ボスと同じ位置
+const BODY_W = 140;               // ボス本体の横幅(px)。足攻撃の本体の判定の横幅もこれに合わせる
+
+// ───────── 動作確認用スイッチ ─────────
+// true : 戦闘開始から第二形態にする(最初の氷塊の雨も飛ばす)
+const START_IN_PHASE2 = true; 
+// true : HPが PHASE2_HP_RATIO 以下になったとき、変身攻撃(ビーム)をせずにすぐ第二形態にする
+const SKIP_PHASE2_TRANSFORM_ATTACK = true;
+const FIRE_IMPACT_HEIGHT = 80;    // パンチ・サイドキックの衝撃(fireimpact)の中心の、地面からの高さ(px)
 
 // 剣の画像は縦向きの絵。先が上を向いた絵なら +π/2、下を向いた絵なら -π/2
 const SWORD_ART_OFFSET = Math.PI / 2;
@@ -202,6 +215,54 @@ export const BOSS2_ATTACKS = {
         ...NONE,
     },
 
+    // ── 第二形態: 近距離の炎コンボ(数値は仮。調整してください) ──
+
+    // 足攻撃: 前隙 boss2firefootwait → 攻撃・後隙 boss2firefootattack。
+    // 攻撃の間、ボスの後ろに床の炎(floorFireHit)も出る。
+    // 本体の蹴りか床の炎のどちらかがヒットすると、後隙を飛ばしてパンチかサイドキックへつながる。
+    fireFoot: {
+        fireFoot: true,
+        startup: 24, active: 8, recovery: 30,
+        range: BODY_W, height: 60,   // 横幅はボス本体と同じ
+        damage: 35, stamina: 0, hitstun: 20, knockback: 260,
+        hitStop: 0, shake: 0.008,
+    },
+
+    // パンチ: 前隙 boss2ready → 攻撃・後隙 boss2firepunch。衝撃(fireImpactHit)も出る。
+    firePunch: {
+        firePunch: true,
+        startup: 20, active: 8, recovery: 34,
+        range: 100, height: 100,
+        damage: 40, stamina: 0, hitstun: 22, knockback: 900,
+        hitStop: 0, shake: 0.01,
+    },
+
+    // サイドキック: 前隙 boss2sidekickstartup → 攻撃・後隙 boss2sidekickattack。衝撃も出る。
+    fireSideKick: {
+        fireSideKick: true,
+        startup: 20, active: 8, recovery: 34,
+        range: 110, height: 180,
+        launch: 300,   // 食らうと上へ浮く強さ(Fighter.js の receiveHit が使う)
+        damage: 40, stamina: 0, hitstun: 40, knockback: 900,
+        hitStop: 0, shake: 0.01,
+    },
+
+    // 足攻撃のエフェクト: 床の炎(上向き)の当たり判定
+    floorFireHit: {
+        projectile: true, parryable: false,
+        range: 210, height: 90,   // 足攻撃の本体(140×60)の1.5倍
+        damage: 30, stamina: 0, hitstun: 20, knockback: 240,
+        hitStop: 0, shake: 0.008,
+    },
+
+    // パンチ・サイドキックのエフェクト: 衝撃(左向きの絵)の当たり判定
+    fireImpactHit: {
+        projectile: true, parryable: false,
+        range: 210, height: 90,   // 床の炎と同じ大きさ
+        damage: 30, stamina: 0, hitstun: 20, knockback: 260,
+        hitStop: 0, shake: 0.008,
+    },
+
     // ── 飛び道具のダメージ設定(すべてパリィ不可) ──
 
     iceSword: {
@@ -272,6 +333,10 @@ const VIEW = {
     icicle: { key: "boss2_icicle",        w: 50,  h: 110, originY: 1 },
     blockTrackIcicle: { key: "boss2_icicle", w: 50, h: 110, originY: 1 },
     beam:   { key: "boss2_firebeam",      w: 1,   h: 1,   originY: 0.5 },
+    // 炎コンボのエフェクト。fireFx は床の炎(上向きの絵・根元を地面に置く)
+    fireFx:     { key: "boss2_floorfire",  w: 200, h: 300, originY: 1 },
+    // 衝撃(左向きの絵)。fireFx の fx が "impact" のときに使う
+    fireImpact: { key: "boss2_fireimpact", w: 120, h: 80,  originY: 0.4 },
 };
 
 function blankProj() {
@@ -298,6 +363,9 @@ function blankProj() {
         traveled: 0,
         beamMode: "thin",   // ビーム: "thin"(ボス→相手) か "big"(真下→全体)
         beamStage: -1,      // ビーム: 段階が変わったら hitSet を空にするための記録
+        fx: "",             // 炎エフェクト: "floor"(床の炎) か "impact"(衝撃)
+        dir: 1,             // 炎エフェクト: 出したときのボスの向き(1=右 / -1=左)
+        life: 0,            // 炎エフェクト: 出てから消えるまでのフレーム
         hitSet: new Set(),
     };
 }
@@ -326,13 +394,23 @@ export default class Boss2 extends BaseBoss {
         L("boss2_changedfire", "boss2changedfire.png");        // 第二形態への変身(空中)
         L("boss2_firebeam", "boss2firebeam.png");              // ビーム(縦長の絵)
         L("boss2_mood2", "boss2mood2.png");                    // 第二形態の待機
+
+        // 第二形態: 近距離の炎コンボ
+        L("boss2_firefootwait", "boss2firefootwait.png");          // 足攻撃の前隙
+        L("boss2_firefootattack", "boss2firefootattack.png");      // 足攻撃の攻撃・後隙
+        L("boss2_floorfire", "boss2floorfire.png");                // 足攻撃のエフェクト(上向き)
+        L("boss2_ready", "boss2ready.png");                        // パンチの前隙
+        L("boss2_firepunch", "boss2firepunch.png");                // パンチの攻撃・後隙
+        L("boss2_fireimpact", "boss2fireimpact.png");              // パンチ・サイドキックのエフェクト(左向き)
+        L("boss2_sidekickstartup", "boss2sidekickstartup.png");    // サイドキックの前隙
+        L("boss2_sidekickattack", "boss2sidekickattack.png");      // サイドキックの攻撃・後隙
     }
 
     constructor(scene, x, groundY, opts = {}) {
         super(scene, x, groundY, {
             texture: "boss2",
             maxHp: 800,
-            bodyW: 140,
+            bodyW: BODY_W,
             bodyH: 160,
             displayW: 200,
             displayH: 180,
@@ -383,8 +461,17 @@ export default class Boss2 extends BaseBoss {
         this.phase2 = false;
         this.beam = null;
 
+        // 足攻撃(本体の蹴りか床の炎)が、今の攻撃でヒットしたか
+        this.comboHit = false;
+
         // スイッチが false なら最初の確定攻撃も行わない(最初から歩いて通常行動する)
         if (!ONE_SHOT_EVENTS) this.openingDone = true;
+
+        // 動作確認用: 最初から第二形態で始める
+        if (START_IN_PHASE2) {
+            this.phase2 = true;
+            this.openingDone = true;
+        }
     }
 
     // ───────── 行動選択 ─────────
@@ -439,13 +526,19 @@ export default class Boss2 extends BaseBoss {
                 }
             }
 
-            this.attack = BOSS2_ATTACKS.fireBeam;
-            this.enter(BS.TELEGRAPH);
-            return;
+            // 動作確認用: 変身攻撃(ビーム)を飛ばして、すぐ第二形態の行動に入る
+            if (!SKIP_PHASE2_TRANSFORM_ATTACK) {
+                this.attack = BOSS2_ATTACKS.fireBeam;
+                this.enter(BS.TELEGRAPH);
+                return;
+            }
         }
 
-        // 第二形態になったあとの行動は、別のCPUを作るまでの仮として、その場から動かず何もしない
-        if (this.phase2) return;
+        // 第二形態になったあとの行動(いまは近距離の炎コンボだけ)
+        if (this.phase2) {
+            this.tickIdlePhase2(nearest);
+            return;
+        }
 
         const dx = nearest.sprite.x - this.sprite.x;
         const far = Math.abs(dx) > CLOSE_RANGE;
@@ -511,6 +604,23 @@ export default class Boss2 extends BaseBoss {
             }
         }
 
+        this.enter(BS.TELEGRAPH);
+    }
+
+    // 第二形態の待機中の行動。遠ければ近づき、近距離なら足攻撃から始める。
+    // (遠距離の行動は、まだ作っていない)
+    tickIdlePhase2(nearest) {
+        const dx = nearest.sprite.x - this.sprite.x;
+        const far = Math.abs(dx) > CLOSE_RANGE;
+
+        if (far) {
+            this.moveBody(Math.sign(dx) * WALK_SPEED, 0);
+            return;
+        }
+
+        if (this.frame <= this.cfg.idleWait) return;
+
+        this.attack = BOSS2_ATTACKS.fireFoot;
         this.enter(BS.TELEGRAPH);
     }
 
@@ -584,6 +694,8 @@ export default class Boss2 extends BaseBoss {
 
         if (a.backstep) {
             this.fireVolley();
+        } else if (a.fireFoot || a.firePunch || a.fireSideKick) {
+            this.spawnFireFx(a);
         } else if (a.blockWave) {
             this.startBlockTrackingSequence(players);
         } else if (a.blockSwords) {
@@ -599,6 +711,22 @@ export default class Boss2 extends BaseBoss {
         } else if (a.rain) {
             this.spawnSwordRain(players);
         }
+    }
+
+    // 攻撃が終わるとき: 足攻撃がヒットしていたら、後隙を飛ばしてパンチかサイドキックへつなぐ
+    onActiveEnd(players) {
+        const a = this.attack;
+
+        if (a?.fireFoot && (this.comboHit || this.hitSet.size > 0)) {
+            this.attack =
+                Math.random() < FOLLOW_PUNCH_CHANCE
+                    ? BOSS2_ATTACKS.firePunch
+                    : BOSS2_ATTACKS.fireSideKick;
+            this.enter(BS.TELEGRAPH);   // onEnter で comboHit を戻す
+            return;
+        }
+
+        this.enter(BS.RECOVER);
     }
 
     // 体の当たり判定がない攻撃(飛び道具だけがダメージ源)
@@ -708,6 +836,9 @@ export default class Boss2 extends BaseBoss {
                 case "beam":
                     this.tickBeam(p, players);
                     break;
+                case "fireFx":
+                    this.tickFireFx(p, players);
+                    break;
             }
         }
     }
@@ -725,6 +856,9 @@ export default class Boss2 extends BaseBoss {
             this.hailReturn = 0;
         }
         if (state === BS.STUN) this.beam = null;   // スタンしたらビームの連続発射をやめる
+
+        // 新しい攻撃の前隙に入るたびに、ヒットの記録を戻す
+        if (state === BS.TELEGRAPH) this.comboHit = false;
     }
 
     onDeadTick() {
@@ -735,6 +869,59 @@ export default class Boss2 extends BaseBoss {
         this.clearProjs();
         this.hailAir = false;
         this.hailHidden = false;
+    }
+
+    // ───────── 第二形態: 近距離の炎コンボ ─────────
+
+    // 攻撃に入った最初のフレームで、攻撃に合わせたエフェクト(当たり判定つき)を出す
+    spawnFireFx(a) {
+        const half = this.sprite.width / 2;
+        const dir = this.facing;
+
+        if (a.fireFoot) {
+            // 足攻撃: 床の炎(上向き)。FOOT_FIRE_SIDE で後ろ(-1)か前(1)かを選ぶ
+            const fa = BOSS2_ATTACKS.floorFireHit;
+
+            this.spawnProj("fireFx", {
+                a: fa,
+                fx: "floor",
+                dir,
+                life: a.active,
+                x: this.sprite.x + dir * FOOT_FIRE_SIDE * (half + fa.range / 2),
+                y: this.groundY,
+            });
+            return;
+        }
+
+        // パンチ・サイドキック: 前方に衝撃(左向きの絵)
+        const ia = BOSS2_ATTACKS.fireImpactHit;
+
+        this.spawnProj("fireFx", {
+            a: ia,
+            fx: "impact",
+            dir,
+            life: a.active,
+            x: this.sprite.x + dir * (half + ia.range / 2),
+            y: this.groundY - FIRE_IMPACT_HEIGHT,
+        });
+    }
+
+    tickFireFx(p, players) {
+        const a = p.a;
+        const before = p.hitSet.size;
+
+        // 床の炎は根元が地面。衝撃は中心が p.y
+        const cy = p.fx === "floor" ? this.groundY - a.height / 2 : p.y;
+        this.hitPlayers(p, players, a.range, a.height, cy);
+
+        // 床の炎に当たっても、足攻撃のヒットとして数える
+        if (p.fx === "floor" && p.hitSet.size > before) {
+            this.comboHit = true;
+        }
+
+        if (p.age >= p.life) {
+            p.active = false;
+        }
     }
 
     // ───────── 氷の剣(バックステップ) ─────────
@@ -1530,7 +1717,9 @@ export default class Boss2 extends BaseBoss {
                 p.a === BOSS2_ATTACKS.icicleUnder ? "icicleUnder" :
                 p.a === BOSS2_ATTACKS.icicle ? "icicle" :
                 p.a === BOSS2_ATTACKS.beamThin ? "beamThin" :
-                p.a === BOSS2_ATTACKS.beamBig ? "beamBig" : null;
+                p.a === BOSS2_ATTACKS.beamBig ? "beamBig" :
+                p.a === BOSS2_ATTACKS.floorFireHit ? "floorFireHit" :
+                p.a === BOSS2_ATTACKS.fireImpactHit ? "fireImpactHit" : null;
 
             projs.push({
                 i,
@@ -1549,6 +1738,8 @@ export default class Boss2 extends BaseBoss {
                 h: p.hovering ? 1 : 0,
                 b: p.bossHover ? 1 : 0,
                 bm: p.beamMode === "big" ? 1 : 0,
+                fx: p.fx === "floor" ? 1 : p.fx === "impact" ? 2 : 0,
+                fd: p.dir,
             });
         }
 
@@ -1573,6 +1764,8 @@ export default class Boss2 extends BaseBoss {
             icicle: BOSS2_ATTACKS.icicle,
             beamThin: BOSS2_ATTACKS.beamThin,
             beamBig: BOSS2_ATTACKS.beamBig,
+            floorFireHit: BOSS2_ATTACKS.floorFireHit,
+            fireImpactHit: BOSS2_ATTACKS.fireImpactHit,
         };
 
         for (const src of list) {
@@ -1617,6 +1810,8 @@ export default class Boss2 extends BaseBoss {
             p.hovering = !!src.h;
             p.bossHover = !!src.b;
             p.beamMode = src.bm ? "big" : "thin";
+            p.fx = src.fx === 1 ? "floor" : src.fx === 2 ? "impact" : "";
+            p.dir = Number(src.fd) || 1;
         }
     }
 
@@ -1676,6 +1871,14 @@ export default class Boss2 extends BaseBoss {
                 if (!info.hit) return null;
                 return { x: p.x, y: info.top + info.len / 2, w: info.w, h: info.len };
             }
+            case "fireFx": {
+                // 炎コンボのエフェクト: 床の炎は根元が地面、衝撃は中心が p.y
+                const a = p.a ?? (p.fx === "floor"
+                    ? BOSS2_ATTACKS.floorFireHit
+                    : BOSS2_ATTACKS.fireImpactHit);
+                const cy = p.fx === "floor" ? this.groundY - a.height / 2 : p.y;
+                return { x: p.x, y: cy, w: a.range, h: a.height };
+            }
             default:
                 return null;
         }
@@ -1708,6 +1911,21 @@ export default class Boss2 extends BaseBoss {
         }
     }
 
+    // 炎コンボのエフェクトの描画。
+    // 床の炎は上向きの絵で、根元を地面に置く。衝撃は左向きの絵なので、右向きのときだけ反転する。
+    renderFireFx(p, v, cfg) {
+        const floor = p.fx === "floor";
+
+        v.setVisible(true)
+            .setAlpha(1)
+            .setOrigin(0.5, cfg.originY)
+            .setDisplaySize(cfg.w, cfg.h)
+            .setPosition(p.x, p.y)
+            .setRotation(0)
+            .setFlipX(!floor && p.dir > 0)
+            .setFlipY(false);
+    }
+
     renderExtra() {
         this.drawProjectileHitboxes();
         this.beamGraphics.clear();
@@ -1724,7 +1942,12 @@ export default class Boss2 extends BaseBoss {
                 continue;
             }
 
-            const cfg = VIEW[p.kind];
+            const cfg = p.kind === "fireFx"
+                ? (p.fx === "floor" ? VIEW.fireFx : VIEW.fireImpact)
+                : VIEW[p.kind];
+
+            // 床の炎はボスの後ろ(ボスの画像より奥)に描く。ほかは手前
+            v.setDepth(p.kind === "fireFx" && p.fx === "floor" ? 4 : 7);
 
             if (v.texture.key !== cfg.key) {
                 v.setTexture(cfg.key);
@@ -1733,6 +1956,12 @@ export default class Boss2 extends BaseBoss {
             // ビームは専用の描画(縦長の画像を、太さと長さに合わせて引き伸ばす)
             if (p.kind === "beam") {
                 this.renderBeam(p, v);
+                continue;
+            }
+
+            // 炎コンボのエフェクトも専用の描画
+            if (p.kind === "fireFx") {
+                this.renderFireFx(p, v, cfg);
                 continue;
             }
 
@@ -1766,7 +1995,8 @@ export default class Boss2 extends BaseBoss {
                 .setAlpha(alpha)
                 .setOrigin(0.5, cfg.originY)
                 .setDisplaySize(dispW, dispH * grow)
-                .setPosition(p.x, p.y + sinkOffset);
+                .setPosition(p.x, p.y + sinkOffset)
+                .setFlipX(false);   // 炎エフェクトで使った反転を、使い回しのスロットに残さない
 
             if (p.kind === "sword") {
                 // p.rot は飛ぶ向き。縦向きの絵なので、そのぶん回してそろえる
@@ -1788,6 +2018,18 @@ export default class Boss2 extends BaseBoss {
 
         // 第二形態への変身〜ビーム中は、空中にいる間ずっとこの画像
         if (a?.beam) return "boss2_changedfire";
+
+        // 第二形態の近距離コンボ: 前隙と、攻撃・後隙で画像を切り替える
+        if (a?.fireFoot) {
+            if (st === BS.TELEGRAPH) return "boss2_firefootwait";
+            if (inAction) return "boss2_firefootattack";
+        } else if (a?.firePunch) {
+            if (st === BS.TELEGRAPH) return "boss2_ready";
+            if (inAction) return "boss2_firepunch";
+        } else if (a?.fireSideKick) {
+            if (st === BS.TELEGRAPH) return "boss2_sidekickstartup";
+            if (inAction) return "boss2_sidekickattack";
+        }
 
         if (a?.backstep) {
             if (st === BS.TELEGRAPH) {
