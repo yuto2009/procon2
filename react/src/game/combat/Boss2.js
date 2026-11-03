@@ -8,9 +8,9 @@ import { DODGE } from "./frameData";
 // false: どちらも行わない(テスト用。最初から通常の行動を繰り返す)
 const ONE_SHOT_EVENTS = true;
 // true : 戦闘開始から第二形態にする(最初の氷塊の雨も飛ばす)
-const START_IN_PHASE2 = true;
+const START_IN_PHASE2 = false;
 // true : HPが PHASE2_HP_RATIO 以下になったとき、変身攻撃(ビーム)をせずにすぐ第二形態にする
-const SKIP_PHASE2_TRANSFORM_ATTACK = true;
+const SKIP_PHASE2_TRANSFORM_ATTACK = false;
 // 炎エフェクトのON/OFF(OFFにすると、その絵も当たり判定も出ません)
 const FLOOR_FIRE_ON = true;   // 足攻撃の床の炎(floorfire)
 const IMPACT_FIRE_ON = true;  // パンチ・サイドキックの衝撃(fireimpact)
@@ -99,7 +99,7 @@ const FIRST_GROUP = [2, 3];           // 最初に撃つ2本(真ん中の2本)
 const PROJ_POOL = 200;                // 同時に存在できる飛び道具の最大数(氷塊の雨で多く使う)
 
 // ───────── 第二形態(HPがこの割合以下で発動) ─────────
-const PHASE2_HP_RATIO = 0.99;
+const PHASE2_HP_RATIO = 0.75;
 
 // ビーム: 最初は遅く、だんだん速く。間隔が THICK_AT 以下になったら極太ビームに切り替える
 const BEAM_INTERVAL_START = 70;   // 1発目→2発目の間隔(フレーム)
