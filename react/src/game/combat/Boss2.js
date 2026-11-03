@@ -237,7 +237,7 @@ export const BOSS2_ATTACKS = {
         startup: 20, active: 8, recovery: 34,
         pull: BODY_W / 2,   // 判定をボスの中心から出す(体の端ではなく中心から前へ伸びる)
         range: 100, height: 120,
-        damage: 40, stamina: 0, hitstun: 22, knockback: 900,
+        damage: 60, stamina: 0, hitstun: 22, knockback: 900,
         hitStop: 0, shake: 0.01,
     },
 
@@ -248,7 +248,7 @@ export const BOSS2_ATTACKS = {
         range: 110, height: 180,
         pull: BODY_W / 2,   // 判定をボスの中心から出す(体の端ではなく中心から前へ伸びる)
         launch: 700,   // 食らうと上へ浮く強さ(Fighter.js の receiveHit が使う)
-        damage: 40, stamina: 0, hitstun: 40, knockback: 900,
+        damage: 55, stamina: 0, hitstun: 40, knockback: 900,
         hitStop: 0, shake: 0.01,
     },
 
