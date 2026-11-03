@@ -1,5 +1,7 @@
 import Phaser from "phaser";
 import BaseBoss, { BS } from "./BaseBoss";
+import { S } from "./Fighter";
+import { DODGE } from "./frameData";
 
 // ───────── 一回きりの演出のスイッチ ─────────
 // true : 最初の確定攻撃(氷塊の雨)と、HP1/4以下の第二形態への変身を行う
@@ -125,11 +127,12 @@ const BODY_W = 140;               // ボス本体の横幅(px)。足攻撃の本
 
 // ───────── 動作確認用スイッチ ─────────
 // true : 戦闘開始から第二形態にする(最初の氷塊の雨も飛ばす)
-const START_IN_PHASE2 = true; 
+const START_IN_PHASE2 = true;
 // true : HPが PHASE2_HP_RATIO 以下になったとき、変身攻撃(ビーム)をせずにすぐ第二形態にする
 const SKIP_PHASE2_TRANSFORM_ATTACK = true;
 const FIRE_IMPACT_HEIGHT = 80;    // パンチ・サイドキックの衝撃(fireimpact)の中心の、地面からの高さ(px)
-
+const UPPER_OPEN_CHANCE = 0.6;    // 第二形態の近距離で、足攻撃の代わりにアッパーから始める確率
+const MELEE_FACE_LOCK = 6;        // 前隙の最後のこのフレーム数だけは向きを固定する(それより前は相手の向きに合わせ続ける)
 // 剣の画像は縦向きの絵。先が上を向いた絵なら +π/2、下を向いた絵なら -π/2
 const SWORD_ART_OFFSET = Math.PI / 2;
 
@@ -221,29 +224,44 @@ export const BOSS2_ATTACKS = {
     // 攻撃の間、ボスの後ろに床の炎(floorFireHit)も出る。
     // 本体の蹴りか床の炎のどちらかがヒットすると、後隙を飛ばしてパンチかサイドキックへつながる。
     fireFoot: {
-        fireFoot: true,
+        fireMelee: true, fireFoot: true,
         startup: 24, active: 8, recovery: 30,
         range: BODY_W, height: 60,   // 横幅はボス本体と同じ
-        damage: 35, stamina: 0, hitstun: 20, knockback: 260,
+        damage: 35, stamina: 0, hitstun: 20, knockback: 340,
         hitStop: 0, shake: 0.008,
     },
 
     // パンチ: 前隙 boss2ready → 攻撃・後隙 boss2firepunch。衝撃(fireImpactHit)も出る。
     firePunch: {
-        firePunch: true,
+        fireMelee: true, firePunch: true,
         startup: 20, active: 8, recovery: 34,
-        range: 100, height: 100,
+        pull: BODY_W / 2,   // 判定をボスの中心から出す(体の端ではなく中心から前へ伸びる)
+        range: 100, height: 120,
         damage: 40, stamina: 0, hitstun: 22, knockback: 900,
         hitStop: 0, shake: 0.01,
     },
 
     // サイドキック: 前隙 boss2sidekickstartup → 攻撃・後隙 boss2sidekickattack。衝撃も出る。
     fireSideKick: {
-        fireSideKick: true,
+        fireMelee: true, fireSideKick: true,
         startup: 20, active: 8, recovery: 34,
         range: 110, height: 180,
-        launch: 300,   // 食らうと上へ浮く強さ(Fighter.js の receiveHit が使う)
+        pull: BODY_W / 2,   // 判定をボスの中心から出す(体の端ではなく中心から前へ伸びる)
+        launch: 700,   // 食らうと上へ浮く強さ(Fighter.js の receiveHit が使う)
         damage: 40, stamina: 0, hitstun: 40, knockback: 900,
+        hitStop: 0, shake: 0.01,
+    },
+
+    // アッパー: 前隙 boss2ready → 攻撃・後隙 boss2fireupper。
+    // 足攻撃を回避でかわされたとき、または近距離で一定の確率で使う。
+    // 食らった相手をボスの頭の高さくらいまで打ち上げる。ヒットしたら追撃のサイドキックへつながる。
+    fireUpper: {
+        fireMelee: true, fireUpper: true,
+        startup: 20, active: 8, recovery: 40,
+        range: 100, height: 110,
+        pull: 50,      // 判定をボスの体の方へ寄せる距離(px)。大きいほど体に近い
+        launch: 600,   // 打ち上げの強さ(Fighter.js の receiveHit が使う)
+        damage: 30, stamina: 0, hitstun: 60, knockback: 120,
         hitStop: 0, shake: 0.01,
     },
 
@@ -258,7 +276,7 @@ export const BOSS2_ATTACKS = {
     // パンチ・サイドキックのエフェクト: 衝撃(左向きの絵)の当たり判定
     fireImpactHit: {
         projectile: true, parryable: false,
-        range: 210, height: 90,   // 床の炎と同じ大きさ
+        range: 210, height: 120,   // 床の炎と同じ大きさ
         damage: 30, stamina: 0, hitstun: 20, knockback: 260,
         hitStop: 0, shake: 0.008,
     },
@@ -404,6 +422,7 @@ export default class Boss2 extends BaseBoss {
         L("boss2_fireimpact", "boss2fireimpact.png");              // パンチ・サイドキックのエフェクト(左向き)
         L("boss2_sidekickstartup", "boss2sidekickstartup.png");    // サイドキックの前隙
         L("boss2_sidekickattack", "boss2sidekickattack.png");      // サイドキックの攻撃・後隙
+        L("boss2_fireupper", "boss2fireupper.png");                // アッパーの攻撃・後隙(前隙は boss2_ready)
     }
 
     constructor(scene, x, groundY, opts = {}) {
@@ -461,8 +480,9 @@ export default class Boss2 extends BaseBoss {
         this.phase2 = false;
         this.beam = null;
 
-        // 足攻撃(本体の蹴りか床の炎)が、今の攻撃でヒットしたか
+        // コンボの記録: 今の攻撃がヒットしたか / 回避の無敵でかわされたか
         this.comboHit = false;
+        this.comboDodged = false;
 
         // スイッチが false なら最初の確定攻撃も行わない(最初から歩いて通常行動する)
         if (!ONE_SHOT_EVENTS) this.openingDone = true;
@@ -620,7 +640,11 @@ export default class Boss2 extends BaseBoss {
 
         if (this.frame <= this.cfg.idleWait) return;
 
-        this.attack = BOSS2_ATTACKS.fireFoot;
+        // 近距離では、一定の確率でアッパーから、そうでなければ足攻撃から始める
+        this.attack =
+            Math.random() < UPPER_OPEN_CHANCE
+                ? BOSS2_ATTACKS.fireUpper
+                : BOSS2_ATTACKS.fireFoot;
         this.enter(BS.TELEGRAPH);
     }
 
@@ -640,7 +664,11 @@ export default class Boss2 extends BaseBoss {
             }
             return;
         }
-
+        // 第二形態の近距離コンボ: 前隙の間は、相手のいる向きに合わせ続ける
+if (this.attack?.fireMelee) {
+    this.faceForMelee();
+    return;
+}
         if (!this.attack?.backstep) return;
          // 最初の数フレームは予備動作だけで、まだ後退しない
         if (this.frame <= BACKSTEP_STARTUP_FRAMES) return;
@@ -686,6 +714,22 @@ export default class Boss2 extends BaseBoss {
             this.fireVolley();
         }
     }
+    tick(players) {
+    this.playersRef = players;   // 前隙の向き合わせで使う
+    super.tick(players);
+}
+
+faceForMelee() {
+    const a = this.attack;
+    if (this.frame >= a.startup - MELEE_FACE_LOCK) return;
+
+    // コンボの途中なら、直前に当てた(かわされた)相手のほうを向く。いなければ一番近い相手
+    const t = this.comboTarget && this.comboTarget.hp > 0
+        ? this.comboTarget
+        : this.nearestAlive(this.playersRef ?? []);
+
+    if (t) this.faceToward(t);
+}
 
     // 攻撃に入った最初のフレームで、それぞれの飛び道具を出す
     onActiveFrame(players) {
@@ -713,16 +757,32 @@ export default class Boss2 extends BaseBoss {
         }
     }
 
-    // 攻撃が終わるとき: 足攻撃がヒットしていたら、後隙を飛ばしてパンチかサイドキックへつなぐ
+    // 攻撃が終わるとき、後隙を飛ばして次の技へつなぐ:
+    //   足攻撃がヒット → パンチかサイドキック / 回避でかわされた → アッパー
+    //   アッパーがヒット → 追撃のサイドキック
     onActiveEnd(players) {
         const a = this.attack;
 
-        if (a?.fireFoot && (this.comboHit || this.hitSet.size > 0)) {
-            this.attack =
-                Math.random() < FOLLOW_PUNCH_CHANCE
-                    ? BOSS2_ATTACKS.firePunch
-                    : BOSS2_ATTACKS.fireSideKick;
-            this.enter(BS.TELEGRAPH);   // onEnter で comboHit を戻す
+        if (a?.fireFoot) {
+            if (this.comboHit) {
+                this.attack =
+                    Math.random() < FOLLOW_PUNCH_CHANCE
+                        ? BOSS2_ATTACKS.firePunch
+                        : BOSS2_ATTACKS.fireSideKick;
+                this.enter(BS.TELEGRAPH);   // onEnter でヒットの記録を戻す
+                return;
+            }
+
+            if (this.comboDodged) {
+                this.attack = BOSS2_ATTACKS.fireUpper;
+                this.enter(BS.TELEGRAPH);
+                return;
+            }
+        }
+
+        if (a?.fireUpper && this.comboHit) {
+            this.attack = BOSS2_ATTACKS.fireSideKick;
+            this.enter(BS.TELEGRAPH);
             return;
         }
 
@@ -742,7 +802,80 @@ export default class Boss2 extends BaseBoss {
             return;
         }
 
+        // 第二形態の近距離コンボは、回避でかわされたかどうかを見分けるため専用の判定を使う
+        if (a?.fireMelee) {
+            this.tickMeleeActive(players);
+            return;
+        }
+
         super.tickActive(players);
+    }
+
+    // BaseBoss.tickActive と同じ流れの当たり判定に、「ヒットか、回避でかわされたか」の記録を足したもの
+    tickMeleeActive(players) {
+        const a = this.attack;
+
+        this.onActiveFrame(players);
+
+        const rect = this.hitRect(a);
+        this.hitInfo = {
+            x: rect.centerX,
+            y: rect.centerY,
+            w: rect.width,
+            h: rect.height,
+        };
+
+        if (this.cfg.debug) {
+            this.hitDebug
+                .setVisible(true)
+                .setPosition(rect.centerX, rect.centerY)
+                .setSize(rect.width, rect.height);
+        }
+
+        const before = new Set(this.hitSet);
+
+        for (const pl of players) {
+            if (pl.hp <= 0 || this.hitSet.has(pl)) continue;
+
+            if (
+                Phaser.Geom.Intersects.RectangleToRectangle(
+                    rect,
+                    pl.sprite.getBounds()
+                )
+            ) {
+                this.hitSet.add(pl);
+                pl.receiveHit(this, a);
+
+                // パリィされてボスが止まったら、この攻撃はここで終わり
+                if (this.state !== BS.ACTIVE) return;
+            }
+        }
+
+        this.noteContacts(this.hitSet, before);
+
+        if (this.frame >= a.active) {
+            this.onActiveEnd(players);
+        }
+    }
+
+    // 攻撃データに pull があれば、判定をその分だけボスの体の方へ寄せる(大きさは変えない)
+    hitRect(a) {
+        const rect = super.hitRect(a);
+        rect.x -= this.facing * (a.pull ?? 0);
+        return rect;
+    }
+
+    // 新しく当たった(当たり判定に触れた)相手を、「回避の無敵でかわされた」か「ヒットした」かに分けて記録する
+    noteContacts(hitSet, before) {
+        for (const pl of hitSet) {
+            if (before.has(pl)) continue;
+            this.comboTarget = pl;
+            if (pl.state === S.DODGE && pl.frame <= DODGE.iframes) {
+                this.comboDodged = true;
+            } else {
+                this.comboHit = true;
+            }
+        }
     }
 
     // ───────── 飛び道具の共通処理 ─────────
@@ -854,11 +987,15 @@ export default class Boss2 extends BaseBoss {
             this.hailAir = false;
             this.hailHidden = false;
             this.hailReturn = 0;
+            this.comboTarget = null;
         }
         if (state === BS.STUN) this.beam = null;   // スタンしたらビームの連続発射をやめる
 
         // 新しい攻撃の前隙に入るたびに、ヒットの記録を戻す
-        if (state === BS.TELEGRAPH) this.comboHit = false;
+        if (state === BS.TELEGRAPH) {
+            this.comboHit = false;
+            this.comboDodged = false;
+        }
     }
 
     onDeadTick() {
@@ -901,23 +1038,21 @@ export default class Boss2 extends BaseBoss {
             fx: "impact",
             dir,
             life: a.active,
-            x: this.sprite.x + dir * (half + ia.range / 2),
+            x: this.sprite.x + dir * (half + ia.range / 2 - (a.pull ?? 0)),
             y: this.groundY - FIRE_IMPACT_HEIGHT,
         });
     }
 
     tickFireFx(p, players) {
         const a = p.a;
-        const before = p.hitSet.size;
+        const before = new Set(p.hitSet);
 
         // 床の炎は根元が地面。衝撃は中心が p.y
         const cy = p.fx === "floor" ? this.groundY - a.height / 2 : p.y;
         this.hitPlayers(p, players, a.range, a.height, cy);
 
-        // 床の炎に当たっても、足攻撃のヒットとして数える
-        if (p.fx === "floor" && p.hitSet.size > before) {
-            this.comboHit = true;
-        }
+        // 床の炎に当たっても、足攻撃のヒット(回避なら「かわされた」)として数える
+        this.noteContacts(p.hitSet, before);
 
         if (p.age >= p.life) {
             p.active = false;
@@ -2029,6 +2164,9 @@ export default class Boss2 extends BaseBoss {
         } else if (a?.fireSideKick) {
             if (st === BS.TELEGRAPH) return "boss2_sidekickstartup";
             if (inAction) return "boss2_sidekickattack";
+        } else if (a?.fireUpper) {
+            if (st === BS.TELEGRAPH) return "boss2_ready";
+            if (inAction) return "boss2_fireupper";
         }
 
         if (a?.backstep) {
