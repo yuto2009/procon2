@@ -20,6 +20,7 @@ export default class GameScene extends Phaser.Scene {
         this.socket = window.socket;
         this.load.spritesheet("player", "/assets/player.png", { frameWidth: 96, frameHeight: 32 });
         this.load.spritesheet("enemy", "/assets/enemy.png", { frameWidth: 96, frameHeight: 32 });
+        this.load.image("dungeonTiles","/assets/map/dungeon_tiles.png");
     }
 
     create() {
@@ -454,7 +455,7 @@ export default class GameScene extends Phaser.Scene {
             g.fillStyle(color).fillRect(x + 2, y + 2, (w - 4) * Math.max(0, ratio), h - 4);
         };
         bar(20, 30, 220, 18, this.player.hp / this.player.maxHp, 0x44cc66);
-        bar(20, 54, 220, 12, this.player.stamina / STAMINA.max, 0xffcc33);
+        bar(20, 54, 220, 12, this.player.stamina / this.player.maxStamina, 0xffcc33);
         bar(560, 30, 220, 18, this.dummy.hp / this.dummy.maxHp, 0xcc4444);
         const p = this.registry.get("progress");
         const need = xpToNext(p.level);
