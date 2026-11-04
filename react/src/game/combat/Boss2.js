@@ -279,7 +279,7 @@ export const BOSS2_ATTACKS = {
     fireImpactHit: {
         projectile: true, parryable: true,
         range: 180 , height: 120,   // 床の炎と同じ大きさ
-        damage: 30, stamina: 0, hitstun: 20, knockback: 260,
+        damage: 1, stamina: 0, hitstun: 20, knockback: 260,
         hitStop: 0, shake: 0.008,
     },
 
@@ -1648,7 +1648,7 @@ faceForMelee() {
                 a: BOSS2_ATTACKS.beamBig,
                 beamMode: "big",
                 x: this.sprite.x,
-                y: this.sprite.y,
+                y: this.sprite.y + 25,
                 rot: Math.PI / 2,
             });
             this.beam = null;   // 残りの終了待ちは、飛び道具(kind: beam)が残っているかで判定
@@ -1669,7 +1669,7 @@ faceForMelee() {
                 target: t,
                 rise: warn,   // 判定が出るまでの待ち(同期でも使う)
                 x: this.sprite.x,
-                y: this.sprite.y,
+                y: this.sprite.y + 25,
                 rot: Math.atan2(t.sprite.y - this.sprite.y, t.sprite.x - this.sprite.x),
             });
         }
@@ -1739,7 +1739,7 @@ faceForMelee() {
         // 細いビームは、当たり判定が出る少し前まで相手を狙い続け、そこで向きを固定する
         if (!big) {
             p.x = this.sprite.x;
-            p.y = this.sprite.y;
+            p.y = this.sprite.y + 20;
 
             if (p.age <= p.rise - BEAM_LOCK && p.target && p.target.hp > 0) {
                 p.rot = Math.atan2(
