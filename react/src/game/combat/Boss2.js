@@ -4,19 +4,21 @@ import { S } from "./Fighter";
 import { DODGE } from "./frameData";
 
 // ───────── 一回きりの演出のスイッチ ─────────
-const ONE_SHOT_EVENTS = true; //trueで必殺技を打つ falseで打たない
+const ONE_SHOT_EVENTS = false; //trueで必殺技を打つ falseで打たない
 const START_IN_PHASE2 = true; //trueで必殺技を全部うって最初から第二形態  
-const SKIP_PHASE2_TRANSFORM_ATTACK = false; //true 必殺技を打たずに最初から第二形態
+const SKIP_PHASE2_TRANSFORM_ATTACK = true; //true 必殺技を打たずに最初から第二形態
 
 // 炎エフェクトのON/OFF
 const FLOOR_FIRE_ON = true;
 const IMPACT_FIRE_ON = true;
 
 // ───────── Boss2 の調整用の数値 ─────────
-const WALK_SPEED = 0.55;
-const CLOSE_RANGE = 90;
+const WALK_SPEED = 0.55;   // 第一形態の歩く速さ(第二形態は歩かない)
+const CLOSE_RANGE = 90;    // 第一形態: これより近ければ近距離、遠ければ遠距離
+const PHASE2_CLOSE_RANGE = 110;  // 第二形態: 近距離・遠距離の境目(第一形態より広い)
+const MELEE_REACH_BONUS = 5;     // 近距離技の range に足すリーチ(境目を広げた分に合わせる)
 
-// 遠距離攻撃の割合
+// 遠距離攻撃の割合(第一形態)
 const FAR_BLOCK_CHANCE = 0.5;
 const FAR_RAIN_CHANCE = 0.3;
 const FAR_SHOCK_CHANCE = 0.2;
@@ -25,8 +27,8 @@ const CLOSE_SHOCK_CHANCE = 0.5;
 const HEAD_RAIN_SHOCK_CHANCE = 0.5;
 
 // ───────── 最初の攻撃: 氷塊の雨 ─────────
-const HAIL_AIR_HEIGHT = 300;
-const HAIL_VANISH_FRAMES = 8;
+const HAIL_AIR_HEIGHT = 300;      // 氷塊の雨・変身ビームのとき、ボスが浮く高さ
+const HAIL_VANISH_FRAMES = 8;     // 消えてから現れるまでのフレーム数
 const HAIL_SHOW_FRAMES = 50;
 const HAIL_COLUMN_SPACING = 12;
 const HAIL_PIECE_SIZE = 28;
@@ -50,7 +52,7 @@ const BIG_BLOCK_COUNTS = [4, 5];
 const BLOCK_STAGGER = 12;
 const BLOCK_FALL_GRAVITY = 0.5;
 const BLOCK_FALL_MAX = 14;
-const BLOCK_PREDICT_FRAMES = 55;
+const BLOCK_PREDICT_FRAMES = 55;   // プレイヤーの移動を何フレーム先まで予測して落とすか
 const SMALL_COUNT = 4;
 const SMALL_GRAVITY = 0.4;
 
@@ -93,17 +95,17 @@ const LAUNCH_FIRST = 120;
 const LAUNCH_SECOND = 240;
 const FIRST_GROUP = [2, 3];
 
-const PROJ_POOL = 200;
-const SWORD_ART_OFFSET = Math.PI / 2;
+const PROJ_POOL = 200;                  // 飛び道具の最大同時数
+const SWORD_ART_OFFSET = Math.PI / 2;   // 剣の画像の向きの補正
 
 // ───────── 第二形態 ─────────
-const PHASE2_HP_RATIO = 0.75;
+const PHASE2_HP_RATIO = 0.75;   // HPがこの割合以下になると第二形態へ
 
 // ───────── ビーム ─────────
 const BEAM_INTERVAL_START = 70;
 const BEAM_INTERVAL_RATIO = 0.72;
 const BEAM_INTERVAL_MIN = 12;
-const BEAM_THICK_AT = 18;
+const BEAM_THICK_AT = 18;       // 間隔がこれ以下になったら太いビームで締める
 
 const BEAM_WARN_RATIO = 0.6;
 const BEAM_WARN_MIN = 14;
@@ -121,19 +123,31 @@ const BEAM_BIG_SPREAD = 6;
 const BEAM_BIG_HOLD = 4;
 
 // ───────── 第二形態: 近距離炎コンボ ─────────
-const FOLLOW_PUNCH_CHANCE = 0.5;
+const FOLLOW_PUNCH_CHANCE = 0.5;   // 足攻撃ヒット後、パンチを選ぶ確率(残りはサイドキック)
 const FOOT_FIRE_SIDE = 0;
-const BODY_W = 145;
+const BODY_W = 145;                // ボス本体の横幅(当たり判定の位置計算にも使う)
 const FIRE_IMPACT_HEIGHT = 80;
-const UPPER_OPEN_CHANCE = 0.6;
-const MELEE_FACE_LOCK = 6;
+const MELEE_FACE_LOCK = 6;         // 近距離技の前隙の最後の何フレームで向きを固定するか
+
+// 近距離の技の抽選(アッパー → 足攻撃 → 残りが蹴り)
+const UPPER_OPEN_CHANCE = 0.4;     // アッパーを選ぶ確率
+const FOOT_OPEN_CHANCE = 0.3;      // 足攻撃を選ぶ確率。残り(0.3)が新しい蹴り
+
+// ───────── 第二形態: 遠距離の行動 ─────────
+const FAR_WARP_CHANCE = 0.5;       // 遠距離で瞬間移動からの近距離技を選ぶ確率(残りは突進)
+const WARP_DISTANCE = 100;         // 瞬間移動後の、相手とボス中心の横距離(近距離の境目より内側)
+
+// ───────── 第二形態: 待機時間 ─────────
+const PHASE2_FAR_WAIT = 10;        // 相手が遠いとき、次の行動に入るまでの待機フレーム
+const PHASE2_NEAR_WAIT = 20;       // 相手が近いとき、次の行動に入るまでの待機フレーム
 
 // ───────── 第二形態: ファイアドロップ ─────────
-const DROP_JUMP_CHANCE = 0.5;       // 地上50%、空中50%
-const DROP_JUMP_HEIGHT = 190;       // 空中ルートの瞬間移動高度
-const DROP_KICK_DASH_SPEED = 16;    // 突進速度
+const DROP_JUMP_CHANCE = 0.5;       // 空中ルートを選ぶ確率(相手の高さは関係なく常にこの確率で抽選)
+const DROP_JUMP_HEIGHT = 190;       // 空中ルートで瞬間移動する高度(固定)
+const DROP_KICK_DASH_SPEED = 16;    // 突進速度(狙った方向に沿った1フレームあたりの移動量)
 const DROP_AIR_STARTUP_EXTRA = 12;  // 空中ルートの追加前隙
-const DROP_FACE_LOCK = 2;           // 最後の2フレームで方向を固定
+const DROP_FACE_LOCK = 2;           // 前隙の最後の何フレームで狙いを固定するか
+const DROP_STOP_FRAMES = 20;        // 壁・床に当たって止まった後、突進状態のまま動かず硬直するフレーム数
 
 const NONE = {
     range: 0,
@@ -247,7 +261,7 @@ export const BOSS2_ATTACKS = {
         startup: 18,
         active: 8,
         recovery: 30,
-        range: BODY_W + 40,
+        range: BODY_W + 40 + MELEE_REACH_BONUS,
         height: 150,
         pull: BODY_W + 20,
         damage: 35,
@@ -261,11 +275,11 @@ export const BOSS2_ATTACKS = {
     firePunch: {
         fireMelee: true,
         firePunch: true,
-        startup: 15,
+        startup: 20,
         active: 8,
         recovery: 34,
         pull: BODY_W / 2,
-        range: 150,
+        range: 150 + MELEE_REACH_BONUS,
         height: 150,
         damage: 60,
         stamina: 0,
@@ -281,7 +295,7 @@ export const BOSS2_ATTACKS = {
         startup: 15,
         active: 8,
         recovery: 34,
-        range: 150,
+        range: 150 + MELEE_REACH_BONUS,
         height: 180,
         pull: BODY_W / 2,
         launch: 700,
@@ -296,10 +310,10 @@ export const BOSS2_ATTACKS = {
     fireUpper: {
         fireMelee: true,
         fireUpper: true,
-        startup: 15,
+        startup: 17,
         active: 8,
         recovery: 40,
-        range: 120,
+        range: 120 + MELEE_REACH_BONUS,
         height: 120,
         pull: 50,
         launch: 600,
@@ -311,8 +325,38 @@ export const BOSS2_ATTACKS = {
         shake: 0.01,
     },
 
+    // 新しい蹴り: アッパーより少し高く浮かせる。ヒット・回避どちらでも突進で追撃
+    fireKick: {
+        fireMelee: true,
+        fireKick: true,
+        startup: 16,
+        active: 8,
+        recovery: 36,
+        range: 200 + MELEE_REACH_BONUS,   // 範囲を大きくした
+        height: 160,
+        pull: 90,                         // 判定をボス本体の近くへ寄せる
+        launch: 680,        // アッパー(600)より少し高く浮かせる
+        damage: 30,
+        stamina: 0,
+        hitstun: 65,
+        knockback: 120,
+        hitStop: 0,
+        shake: 0.01,
+    },
+
+    // 遠距離用: 構えてから相手の前へ瞬間移動し、近距離技へつなぐ
+    fireWarp: {
+        noBody: true,
+        warp: true,
+        startup: 30,    // boss2_ready で構えるフレーム数(仮置き)
+        active: 1,
+        recovery: 0,
+        ...NONE,
+    },
+
     // ───────── ファイアドロップ ─────────
-    // 地上または空中から、相手に向きを合わせて突進キック
+    // 地上または空中から、相手の方向に狙いを定めて一直線に突進キック
+    // 壁か床に当たると、その場で止まって硬直する
 
     fireDrop: {
         fireMelee: true,
@@ -593,6 +637,14 @@ export default class Boss2 extends BaseBoss {
         L("boss2_fireupper", "boss2fireupper.png");
         L("boss2_firedropwait", "boss2firedropstartup.png");
         L("boss2_firedropattack", "boss2firedropattack.png");
+
+        // 第二形態: 新しい蹴り
+        L("boss2_firekickstartup", "boss2firekickstartup.png");
+        L("boss2_firekickattack", "boss2firekickattack.png");
+        L("boss2_firekickrecovery", "boss2firekickrecovery.png");
+
+        // スタン・パリィ・壁や床に当たって止まったときの画像
+        L("boss2_stun", "boss2stun.png");
     }
 
     constructor(scene, x, groundY, opts = {}) {
@@ -647,12 +699,15 @@ export default class Boss2 extends BaseBoss {
         this.comboDodged = false;
 
         // ファイアドロップの状態
-        this.dropJump = false;
-        this.dropJumpHeight = DROP_JUMP_HEIGHT;
-        this.dropGroundY =
+        this.dropJump = false;              // 空中ルートかどうか
+        this.dropGroundY =                  // 地上ルートのボス中心Y
             this.groundY - this.sprite.height / 2;
-        this.dropDir = 0;
-        this.dropTarget = null;
+        this.dropAngle = 0;                 // 相手に向けた突進の角度(ラジアン)
+        this.dropVX = 0;                    // 突進開始時に固定する横速度
+        this.dropVY = 0;                    // 突進開始時に固定する縦速度
+        this.dropTarget = null;             // 追撃対象
+        this.dropStopped = false;           // 壁か床に当たって止まっているか
+        this.dropStopLeft = 0;              // 止まった後の残り硬直フレーム
 
         if (!ONE_SHOT_EVENTS) {
             this.openingDone = true;
@@ -809,21 +864,39 @@ export default class Boss2 extends BaseBoss {
         this.enter(BS.TELEGRAPH);
     }
 
+    // 第二形態の待機: 歩かず、距離に応じた待機時間で次の技を選ぶ
     tickIdlePhase2(nearest) {
         const dx = nearest.sprite.x - this.sprite.x;
-        const far = Math.abs(dx) > CLOSE_RANGE;
+
+        // 近距離か遠距離か(待機時間と技の抽選に使う。第二形態は歩かない)
+        const far = Math.abs(dx) > PHASE2_CLOSE_RANGE;
+
+        // 遠いときは短く、近いときはやや長めに待ってから次の行動へ
+        const wait = far ? PHASE2_FAR_WAIT : PHASE2_NEAR_WAIT;
+        if (this.frame <= wait) return;
 
         if (far) {
-            this.moveBody(Math.sign(dx) * WALK_SPEED, 0);
+            if (Math.random() < FAR_WARP_CHANCE) {
+                // 構えてから相手の前へ瞬間移動
+                this.attack = BOSS2_ATTACKS.fireWarp;
+                this.enter(BS.TELEGRAPH);
+            } else {
+                // 突進(地上か空中かは startDropFollowUp 内で抽選)
+                this.startDropFollowUp(nearest);
+            }
             return;
         }
 
-        if (this.frame <= this.cfg.idleWait) return;
+        // 近距離: アッパー / 足攻撃 / 蹴り
+        const r = Math.random();
 
-        this.attack =
-            Math.random() < UPPER_OPEN_CHANCE
-                ? BOSS2_ATTACKS.fireUpper
-                : BOSS2_ATTACKS.fireFoot;
+        if (r < UPPER_OPEN_CHANCE) {
+            this.attack = BOSS2_ATTACKS.fireUpper;
+        } else if (r < UPPER_OPEN_CHANCE + FOOT_OPEN_CHANCE) {
+            this.attack = BOSS2_ATTACKS.fireFoot;
+        } else {
+            this.attack = BOSS2_ATTACKS.fireKick;
+        }
 
         this.enter(BS.TELEGRAPH);
     }
@@ -833,27 +906,17 @@ export default class Boss2 extends BaseBoss {
     onTelegraphTick() {
         // ファイアドロップの前隙
         if (this.attack?.fireDrop) {
-            this.faceForMelee();
-
-            if (this.dropJump) {
-                if (
-                    this.dropTarget?.hp > 0 &&
-                    this.dropTarget.sprite.getBounds().bottom <
-                        this.groundY - 10
-                ) {
-                    this.dropJumpHeight = Math.max(
-                        0,
-                        this.dropGroundY - this.dropTarget.sprite.y
-                    );
-                }
-
-                this.sprite.y =
-                    this.dropGroundY - this.dropJumpHeight;
-            } else {
-                this.sprite.y = this.dropGroundY;
+            // 固定フレームより前だけ、相手を追って狙いを更新
+            if (this.frame < this.attack.startup - DROP_FACE_LOCK) {
+                this.updateDropAim();
             }
 
-            this.vy = 0;
+            // 高さは固定: 空中ルートは瞬間移動した高度、地上ルートは地面
+            this.sprite.y = this.dropJump
+                ? this.dropGroundY - DROP_JUMP_HEIGHT
+                : this.dropGroundY;
+
+            this.vy = 0; // 前隙中は重力を無効
             return;
         }
 
@@ -939,34 +1002,47 @@ export default class Boss2 extends BaseBoss {
 
     // ───────── 近距離攻撃の軸合わせ ─────────
 
+    // 前隙の間は相手のほうを向き、最後の MELEE_FACE_LOCK フレームで向きを固定する
     faceForMelee() {
         const a = this.attack;
         if (!a) return;
 
-        const lockFrames = a.fireDrop
-            ? DROP_FACE_LOCK
-            : MELEE_FACE_LOCK;
-
         // 指定フレームより後は方向を固定
-        if (this.frame >= a.startup - lockFrames) {
+        if (this.frame >= a.startup - MELEE_FACE_LOCK) {
             return;
         }
 
-        const t = a.fireDrop
-            ? (
-                this.dropTarget?.hp > 0
-                    ? this.dropTarget
-                    : this.nearestAlive(this.playersRef ?? [])
-            )
-            : (
-                this.comboTarget && this.comboTarget.hp > 0
-                    ? this.comboTarget
-                    : this.nearestAlive(this.playersRef ?? [])
-            );
+        const t =
+            this.comboTarget && this.comboTarget.hp > 0
+                ? this.comboTarget
+                : this.nearestAlive(this.playersRef ?? []);
 
         if (t) {
             this.faceToward(t);
         }
+    }
+
+    // ファイアドロップの狙いを更新する
+    // ボス中心から相手の中心へ向かう角度を求め、向きも相手に合わせる
+    updateDropAim() {
+        const t =
+            this.dropTarget?.hp > 0
+                ? this.dropTarget
+                : this.nearestAlive(this.playersRef ?? []);
+
+        if (!t) return;
+
+        this.faceToward(t);
+
+        const dx = t.sprite.x - this.sprite.x;
+        let dy = t.sprite.y - this.sprite.y;
+
+        // 地上ルートは下向きに狙わない(相手が空中なら斜め上、地上なら水平)
+        if (!this.dropJump) {
+            dy = Math.min(dy, 0);
+        }
+
+        this.dropAngle = Math.atan2(dy, dx);
     }
 
     // ───────── 攻撃開始時の処理 ─────────
@@ -976,13 +1052,20 @@ export default class Boss2 extends BaseBoss {
 
         if (this.frame !== 1) return;
 
-        if (a.backstep) {
+        if (a.warp) {
+            // 相手の前へ瞬間移動
+            this.warpToTarget(players);
+
+        } else if (a.backstep) {
             this.fireVolley();
 
         } else if (a.fireDrop) {
-            // 前隙で合わせた方向を固定
-            this.dropDir =
-                this.facing >= 0 ? 1 : -1;
+            // 前隙で固定した角度から、突進の速度ベクトルを決める
+            this.dropVX = Math.cos(this.dropAngle) * DROP_KICK_DASH_SPEED;
+            this.dropVY = Math.sin(this.dropAngle) * DROP_KICK_DASH_SPEED;
+
+            // 誤差で出る極小の縦速度は0にする(水平突進が床判定に引っかかるのを防ぐ)
+            if (Math.abs(this.dropVY) < 0.001) this.dropVY = 0;
 
         } else if (
             a.fireFoot ||
@@ -1014,10 +1097,68 @@ export default class Boss2 extends BaseBoss {
         }
     }
 
+    // 一番近い相手の前へ瞬間移動して、相手のほうを向く
+    warpToTarget(players) {
+        const t = this.nearestAlive(players);
+        if (!t) return;
+
+        const { arenaLeft, arenaRight } = this.cfg;
+        const half = this.sprite.width / 2;
+        const minX = arenaLeft + half;
+        const maxX = arenaRight - half;
+
+        // 今ボスがいる側に出る。壁にはみ出すなら反対側
+        let side = Math.sign(this.sprite.x - t.sprite.x) || 1;
+        let x = t.sprite.x + side * WARP_DISTANCE;
+
+        if (x < minX || x > maxX) {
+            side = -side;
+            x = t.sprite.x + side * WARP_DISTANCE;
+        }
+
+        // 高さ 0 = 地面に着地して出る
+        this.teleportBoss(Phaser.Math.Clamp(x, minX, maxX), 0);
+        this.faceToward(t);
+    }
+
     // ───────── コンボの接続 ─────────
+
+    // ファイアドロップへ移行する
+    // 追撃のときは直前に当てた相手、通常開始のときは指定した相手を狙う
+    startDropFollowUp(target = this.comboTarget) {
+        this.dropTarget = target;
+
+        // 空中ルートか地上ルートかを抽選(相手の高さは関係なし)
+        this.dropJump = Math.random() < DROP_JUMP_CHANCE;
+
+        // 空中ルートは前隙を延長
+        this.attack = {
+            ...BOSS2_ATTACKS.fireDrop,
+            startup:
+                BOSS2_ATTACKS.fireDrop.startup +
+                (this.dropJump ? DROP_AIR_STARTUP_EXTRA : 0),
+        };
+
+        this.enter(BS.TELEGRAPH);
+    }
 
     onActiveEnd(players) {
         const a = this.attack;
+
+        // 瞬間移動の後は、4つの近距離技を25%ずつで選んで前隙から始める
+        if (a?.warp) {
+            const picks = [
+                BOSS2_ATTACKS.firePunch,
+                BOSS2_ATTACKS.fireKick,
+                BOSS2_ATTACKS.fireFoot,
+                BOSS2_ATTACKS.fireUpper,
+            ];
+
+            this.attack =
+                picks[Math.floor(Math.random() * picks.length)];
+            this.enter(BS.TELEGRAPH);
+            return;
+        }
 
         if (a?.fireFoot) {
             if (this.comboHit) {
@@ -1043,47 +1184,23 @@ export default class Boss2 extends BaseBoss {
             return;
         }
 
-        // パンチまたはサイドキックがヒットしたらファイアドロップ
+        // 蹴りはヒットでも回避でも突進で追撃(空振りのときだけ後隙)
+        if (
+            a?.fireKick &&
+            (this.comboHit || this.comboDodged) &&
+            this.comboTarget?.hp > 0
+        ) {
+            this.startDropFollowUp();
+            return;
+        }
+
+        // パンチまたはサイドキックがヒットしたら突進で追撃
         if (
             (a?.firePunch || a?.fireSideKick) &&
             this.comboHit &&
             this.comboTarget?.hp > 0
         ) {
-            // 追撃対象を固定
-            this.dropTarget = this.comboTarget;
-
-            // 相手が空中にいれば、相手の高さに合わせて追撃する
-            const targetAirborne =
-                this.dropTarget.sprite.getBounds().bottom <
-                this.groundY - 10;
-
-            // 空中なら必ず空中ルート。地上なら従来どおり50%抽選
-            this.dropJump =
-                targetAirborne ||
-                Math.random() < DROP_JUMP_CHANCE;
-
-            this.dropJumpHeight = targetAirborne
-                ? Math.max(
-                    0,
-                    this.groundY -
-                    this.sprite.height / 2 -
-                    this.dropTarget.sprite.y
-                )
-                : DROP_JUMP_HEIGHT;
-
-            // 空中ルートは前隙を12フレーム延長
-            this.attack = {
-                ...BOSS2_ATTACKS.fireDrop,
-                startup:
-                    BOSS2_ATTACKS.fireDrop.startup +
-                    (
-                        this.dropJump
-                            ? DROP_AIR_STARTUP_EXTRA
-                            : 0
-                    ),
-            };
-
-            this.enter(BS.TELEGRAPH);
+            this.startDropFollowUp();
             return;
         }
 
@@ -1115,47 +1232,42 @@ export default class Boss2 extends BaseBoss {
 
     // ───────── ファイアドロップの突進 ─────────
 
+    // 突進を1フレーム進める。床か壁に着いて突進を止めるべきなら true を返す
     tickDropKickMotion() {
         const a = this.attack;
-        if (!a?.fireDrop) return;
+        if (!a?.fireDrop) return false;
 
-        const { arenaLeft, arenaRight } = this.cfg;
+        const { arenaLeft, arenaRight, ceilingY } = this.cfg;
         const half = this.sprite.width / 2;
 
-        // 固定済みの方向で突進
-        const dir =
-            this.dropDir ||
-            (this.facing >= 0 ? 1 : -1);
+        // ボスの中心が動ける左右の限界(壁)
+        const minX = arenaLeft + half;
+        const maxX = arenaRight - half;
 
-        this.sprite.x = Phaser.Math.Clamp(
-            this.sprite.x +
-                dir * DROP_KICK_DASH_SPEED,
-            arenaLeft + half,
-            arenaRight - half
+        // 固定した方向へ一直線に進む(途中で方向は変えない)
+        const nextX = this.sprite.x + this.dropVX;
+        const nextY = this.sprite.y + this.dropVY;
+
+        // アリーナ内・床・天井に収める
+        this.sprite.x = Phaser.Math.Clamp(nextX, minX, maxX);
+        this.sprite.y = Phaser.Math.Clamp(
+            nextY,
+            ceilingY,
+            this.dropGroundY
         );
 
-        if (this.dropJump) {
-            // 空中ルート: 相手が空中なら、その高さに合わせる
-            if (
-                this.dropTarget?.hp > 0 &&
-                this.dropTarget.sprite.getBounds().bottom <
-                    this.groundY - 10
-            ) {
-                this.dropJumpHeight = Math.max(
-                    0,
-                    this.dropGroundY - this.dropTarget.sprite.y
-                );
-            }
+        this.vy = 0; // 突進中は重力を無効
 
-            this.sprite.y =
-                this.dropGroundY - this.dropJumpHeight;
-        } else {
-            // 地上ルート: 地上を水平に突進
-            this.sprite.y = this.dropGroundY;
-        }
+        // 空中ルートで下向きに進んで床に着いた(地上ルートは床の上を進むだけなので対象外)
+        const hitFloor =
+            this.dropJump && this.dropVY > 0 && nextY >= this.dropGroundY;
 
-        // 前隙・突進中は重力を無効
-        this.vy = 0;
+        // 進行方向の壁に着いた(壁から離れる向きなら対象外)
+        const hitWall =
+            (this.dropVX < 0 && nextX <= minX) ||
+            (this.dropVX > 0 && nextX >= maxX);
+
+        return hitFloor || hitWall;
     }
 
     // ───────── 近距離攻撃の当たり判定 ─────────
@@ -1163,11 +1275,25 @@ export default class Boss2 extends BaseBoss {
     tickMeleeActive(players) {
         const a = this.attack;
 
+        // 壁・床で止まっている間は動かず、当たり判定も出さない。時間が来たら後隙へ
+        if (a?.fireDrop && this.dropStopped) {
+            this.vy = 0;
+            this.dropStopLeft--;
+
+            if (this.dropStopLeft <= 0) {
+                this.enter(BS.RECOVER);
+            }
+
+            return;
+        }
+
         this.onActiveFrame(players);
 
         // 先に移動し、その後に当たり判定を計算
+        let stopped = false;
+
         if (a?.fireDrop) {
-            this.tickDropKickMotion();
+            stopped = this.tickDropKickMotion();
         }
 
         const rect = this.hitRect(a);
@@ -1211,6 +1337,19 @@ export default class Boss2 extends BaseBoss {
 
         this.noteContacts(this.hitSet, before);
 
+        // 床か壁に着いたら、その場で止まって硬直に入る(active の残りは待たない)
+        if (stopped) {
+            this.dropStopped = true;
+            this.dropStopLeft = DROP_STOP_FRAMES;
+            return;
+        }
+
+        // 突進がプレイヤーに当たったら、突進を終わらせて通常の後隙へ(スタン画像にはしない)
+        if (a?.fireDrop && this.hitSet.size > before.size) {
+            this.enter(BS.RECOVER);
+            return;
+        }
+
         if (this.frame >= a.active) {
             this.onActiveEnd(players);
         }
@@ -1225,6 +1364,7 @@ export default class Boss2 extends BaseBoss {
 
     // ───────── ヒット・回避の記録 ─────────
 
+    // 今回新しく触れた相手を調べ、ヒットか回避かを記録する(コンボの分岐に使う)
     noteContacts(hitSet, before) {
         for (const pl of hitSet) {
             if (before.has(pl)) continue;
@@ -1301,7 +1441,7 @@ export default class Boss2 extends BaseBoss {
     // ───────── 毎フレームの追加処理 ─────────
 
     tickExtra(players) {
-        // プレイヤーの移動量を記録
+        // プレイヤーの移動量を記録(氷塊の落下位置の予測に使う)
         for (const pl of players) {
             const previousX = this.lastPlayerX.get(pl);
 
@@ -1370,7 +1510,7 @@ export default class Boss2 extends BaseBoss {
             return true;
         }
 
-        // ファイアドロップは前隙と突進中だけ重力無効
+        // ファイアドロップは前隙と突進中(止まっている硬直中も含む)だけ重力無効
         // 後隙 BS.RECOVER では重力を有効にする
         return (
             !!this.attack?.fireDrop &&
@@ -1396,10 +1536,14 @@ export default class Boss2 extends BaseBoss {
                 this.vy = 0;
             }
 
+            // ファイアドロップの状態をリセット
             this.dropJump = false;
-            this.dropJumpHeight = DROP_JUMP_HEIGHT;
-            this.dropDir = 0;
+            this.dropAngle = 0;
+            this.dropVX = 0;
+            this.dropVY = 0;
             this.dropTarget = null;
+            this.dropStopped = false;
+            this.dropStopLeft = 0;
         }
 
         if (state === BS.STUN) {
@@ -1414,19 +1558,26 @@ export default class Boss2 extends BaseBoss {
                 this.dropGroundY =
                     this.groundY - this.sprite.height / 2;
 
-                this.dropDir = 0;
+                this.dropVX = 0;
+                this.dropVY = 0;
+                this.dropStopped = false;
+                this.dropStopLeft = 0;
 
                 if (this.dropJump) {
-                    // 空中ルート: 相手の高さへ瞬間移動
+                    // 空中ルート: 固定の高度へ瞬間移動
                     this.teleportBoss(
                         this.sprite.x,
-                        this.dropJumpHeight
+                        DROP_JUMP_HEIGHT
                     );
                 } else {
                     // 地上ルート
                     this.sprite.y = this.dropGroundY;
                     this.vy = 0;
                 }
+
+                // 開始時点で相手の方向に角度を合わせておく
+                // (前の角度が一瞬見えるのを防ぐ。移動後の位置から計算する)
+                this.updateDropAim();
             }
         }
     }
@@ -1440,9 +1591,12 @@ export default class Boss2 extends BaseBoss {
         this.hailAir = false;
         this.hailHidden = false;
         this.dropJump = false;
-        this.dropJumpHeight = DROP_JUMP_HEIGHT;
-        this.dropDir = 0;
+        this.dropAngle = 0;
+        this.dropVX = 0;
+        this.dropVY = 0;
         this.dropTarget = null;
+        this.dropStopped = false;
+        this.dropStopLeft = 0;
     }
 
     // ───────── 第二形態: 炎エフェクト ─────────
@@ -1745,6 +1899,7 @@ export default class Boss2 extends BaseBoss {
 
     // ───────── 最初の攻撃: 氷塊の雨 ─────────
 
+    // ボスを指定位置へ瞬間移動する(heightAboveGround は地面からの高さ)
     teleportBoss(x, heightAboveGround) {
         this.sprite.x = x;
 
@@ -2507,6 +2662,12 @@ export default class Boss2 extends BaseBoss {
 
     // ───────── 同期 ─────────
 
+    // コピーした攻撃(延長前隙のファイアドロップ)でも名前を返し、ゲストに伝わるようにする
+    attackName() {
+        if (this.attack?.fireDrop) return "fireDrop";
+        return super.attackName();
+    }
+
     getExtraSyncData() {
         const projs = [];
 
@@ -2571,12 +2732,17 @@ export default class Boss2 extends BaseBoss {
             projs,
             hh: this.hailHidden ? 1 : 0,
             p2: this.phase2 ? 1 : 0,
+            // ファイアドロップの回転と、止まった画像のために同期する
+            da: Math.round(this.dropAngle * 1000) / 1000,
+            ds: this.dropStopped ? 1 : 0,
         };
     }
 
     applyExtraSync(d) {
         this.hailHidden = !!d?.hh;
         this.phase2 = !!d?.p2;
+        this.dropAngle = Number(d?.da) || 0;
+        this.dropStopped = !!d?.ds;
 
         const list =
             Array.isArray(d?.projs)
@@ -2855,6 +3021,45 @@ export default class Boss2 extends BaseBoss {
             .setFlipY(false);
     }
 
+    // ファイアドロップの前隙・突進中は、狙った方向に画像を回転する
+    // (壁・床で止まった後は回転を戻す)
+    poseRotation() {
+        if (
+            this.attack?.fireDrop &&
+            !this.dropStopped &&
+            (this.state === BS.TELEGRAPH || this.state === BS.ACTIVE)
+        ) {
+            // 元絵は左向き。右向きは反転されるので角度そのまま、
+            // 左向きは元絵が180度ずれているのでその分を引く
+            return this.facing > 0
+                ? this.dropAngle
+                : this.dropAngle - Math.PI;
+        }
+
+        return null;
+    }
+
+    // 回転中の画像が地面にめり込まないように、見た目の高さだけ補正する
+    // (当たり判定や本体の位置は動かさない)
+    render() {
+        super.render();
+
+        const rot = this.poseRotation();
+        if (rot === null) return; // 回転していないときは補正なし
+
+        // 回転後の画像が収まる範囲の半分の高さ(縦横の寸法と角度から計算)
+        const w = this.view.displayWidth;
+        const h = this.view.displayHeight;
+        const halfH =
+            (Math.abs(w * Math.sin(rot)) + Math.abs(h * Math.cos(rot))) / 2;
+
+        // 画像の下端が地面を超えないように、中心のY座標を上限で押さえる
+        const maxY = this.groundY - halfH;
+        if (this.view.y > maxY) {
+            this.view.y = maxY;
+        }
+    }
+
     renderExtra() {
         this.drawProjectileHitboxes();
         this.beamGraphics.clear();
@@ -2970,12 +3175,28 @@ export default class Boss2 extends BaseBoss {
             st === BS.ACTIVE ||
             st === BS.RECOVER;
 
+        // スタン中は常に boss2_stun(パリィなど原因を問わない)
+        if (st === BS.STUN) {
+            return "boss2_stun";
+        }
+
+        // ファイアドロップで壁・床に当たって止まっている間(硬直中と後隙)
+        // プレイヤーにヒットしただけでは切り替えない
+        if (a?.fireDrop && this.dropStopped) {
+            return "boss2_stun";
+        }
+
         if (a?.hail) {
             return "boss2_firstattack";
         }
 
         if (a?.beam) {
             return "boss2_changedfire";
+        }
+
+        // 瞬間移動の構え
+        if (a?.warp) {
+            return "boss2_ready";
         }
 
         if (a?.fireFoot) {
@@ -3009,6 +3230,19 @@ export default class Boss2 extends BaseBoss {
 
             if (inAction) {
                 return "boss2_fireupper";
+            }
+        } else if (a?.fireKick) {
+            // 前隙・攻撃・後隙でそれぞれ別の画像
+            if (st === BS.TELEGRAPH) {
+                return "boss2_firekickstartup";
+            }
+
+            if (st === BS.ACTIVE) {
+                return "boss2_firekickattack";
+            }
+
+            if (st === BS.RECOVER) {
+                return "boss2_firekickrecovery";
             }
         } else if (a?.fireDrop) {
             if (st === BS.TELEGRAPH) {
