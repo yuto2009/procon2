@@ -91,6 +91,7 @@ export default class Fighter {
             .setVisible(false);
 
         this.maxHp = maxHp;
+        this.maxStamina = maxStamina;
         this.damageMul = damageMul;
         this.weapon = weapon;
         this.arrows = [];
@@ -108,7 +109,7 @@ export default class Fighter {
         this.body.setVelocity(0, 0);
 
         this.hp = this.maxHp;
-        this.stamina = STAMINA.max;
+        this.stamina = this.maxStamina;
         this.regenCooldown = 0;
         this.facing = 1;
         this.attack = null;
@@ -358,7 +359,7 @@ export default class Fighter {
             attackerIsFront
         ) {
             this.stamina = Math.min(
-                STAMINA.max,
+                this.maxStamina,
                 this.stamina + PARRY.staminaGain
             );
 
@@ -455,7 +456,7 @@ export default class Fighter {
         }
 
         this.stamina = Math.min(
-            STAMINA.max,
+            this.maxStamina,
             this.stamina + STAMINA.regenPerFrame
         );
     }
