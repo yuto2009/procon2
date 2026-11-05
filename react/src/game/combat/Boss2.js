@@ -4,9 +4,9 @@ import { S } from "./Fighter";
 import { DODGE } from "./frameData";
 
 // ───────── 一回きりの演出のスイッチ ─────────
-const ONE_SHOT_EVENTS = false; //trueで必殺技を打つ falseで打たない
-const START_IN_PHASE2 = true; //trueで必殺技を全部うって最初から第二形態  
-const SKIP_PHASE2_TRANSFORM_ATTACK = true; //true 必殺技を打たずに最初から第二形態
+const ONE_SHOT_EVENTS = true; //trueで必殺技を打つ falseで打たない
+const START_IN_PHASE2 = false; //trueで必殺技を全部うって最初から第二形態  
+const SKIP_PHASE2_TRANSFORM_ATTACK = false; //true 必殺技を打たずに最初から第二形態
 
 // 炎エフェクトのON/OFF
 const FLOOR_FIRE_ON = true;
