@@ -4,9 +4,9 @@ import { S } from "./Fighter";
 import { DODGE } from "./frameData";
 
 // ───────── 一回きりの演出のスイッチ ─────────
-const ONE_SHOT_EVENTS = true; //trueで必殺技を打つ falseで打たない
-const START_IN_PHASE2 = false; //trueで必殺技を全部うって最初から第二形態  
-const SKIP_PHASE2_TRANSFORM_ATTACK = false; //true 必殺技を打たずに最初から第二形態
+const ONE_SHOT_EVENTS = false; //trueで必殺技を打つ falseで打たない
+const START_IN_PHASE2 = true; //trueで必殺技を全部うって最初から第二形態  
+const SKIP_PHASE2_TRANSFORM_ATTACK = true; //true 必殺技を打たずに最初から第二形態
 
 // 炎エフェクトのON/OFF
 const FLOOR_FIRE_ON = true;
@@ -138,8 +138,8 @@ const FAR_WARP_CHANCE = 0.5;       // 遠距離で瞬間移動からの近距離
 const WARP_DISTANCE = 100;         // 瞬間移動後の、相手とボス中心の横距離(近距離の境目より内側)
 
 // ───────── 第二形態: 待機時間 ─────────
-const PHASE2_FAR_WAIT = 10;        // 相手が遠いとき、次の行動に入るまでの待機フレーム
-const PHASE2_NEAR_WAIT = 20;       // 相手が近いとき、次の行動に入るまでの待機フレーム
+const PHASE2_FAR_WAIT = 15;        // 相手が遠いとき、次の行動に入るまでの待機フレーム
+const PHASE2_NEAR_WAIT = 25;       // 相手が近いとき、次の行動に入るまでの待機フレーム
 
 // ───────── 第二形態: ファイアドロップ ─────────
 const DROP_JUMP_CHANCE = 0.5;       // 空中ルートを選ぶ確率(相手の高さは関係なく常にこの確率で抽選)
