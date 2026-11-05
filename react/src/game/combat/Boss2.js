@@ -3076,6 +3076,8 @@ export default class Boss2 extends BaseBoss {
                     ? "floorFireHit"
                 : p.a === BOSS2_ATTACKS.fireImpactHit
                     ? "fireImpactHit"
+                : p.a === BOSS2_ATTACKS.p3FieldHit
+                    ? "p3FieldHit"
                 : null;
 
             projs.push({
@@ -3100,6 +3102,10 @@ export default class Boss2 extends BaseBoss {
                         ? 1
                         : p.fx === "impact"
                             ? 2
+                        : p.fx === "ice"
+                            ? 3
+                        : p.fx === "fire"
+                            ? 4
                             : 0,
                 fd: p.dir,
             });
@@ -3109,6 +3115,7 @@ export default class Boss2 extends BaseBoss {
             projs,
             hh: this.hailHidden ? 1 : 0,
             p2: this.phase2 ? 1 : 0,
+            p3: this.phase3 ? 1 : 0,
             // ファイアドロップの回転と、止まった画像のために同期する
             da: Math.round(this.dropAngle * 1000) / 1000,
             ds: this.dropStopped ? 1 : 0,
@@ -3118,6 +3125,7 @@ export default class Boss2 extends BaseBoss {
     applyExtraSync(d) {
         this.hailHidden = !!d?.hh;
         this.phase2 = !!d?.p2;
+        this.phase3 = !!d?.p3;
         this.dropAngle = Number(d?.da) || 0;
         this.dropStopped = !!d?.ds;
 
@@ -3140,6 +3148,7 @@ export default class Boss2 extends BaseBoss {
             beamBig: BOSS2_ATTACKS.beamBig,
             floorFireHit: BOSS2_ATTACKS.floorFireHit,
             fireImpactHit: BOSS2_ATTACKS.fireImpactHit,
+            p3FieldHit: BOSS2_ATTACKS.p3FieldHit,
         };
 
         for (const src of list) {
@@ -3212,6 +3221,10 @@ export default class Boss2 extends BaseBoss {
                     ? "floor"
                     : src.fx === 2
                         ? "impact"
+                    : src.fx === 3
+                        ? "ice"
+                    : src.fx === 4
+                        ? "fire"
                         : "";
 
             p.dir = Number(src.fd) || 1;
@@ -3324,6 +3337,25 @@ export default class Boss2 extends BaseBoss {
                     y: info.top + info.len / 2,
                     w: info.w,
                     h: info.len,
+                };
+            }
+
+            case "p3Field": {
+                // 当たり判定が出ている間だけ表示
+                if (
+                    p.age < P3_FIELD_WARN ||
+                    p.age >= P3_FIELD_WARN + P3_FIELD_LIFE
+                ) {
+                    return null;
+                }
+
+                const { w, h } = this.p3FieldSize();
+
+                return {
+                    x: p.x,
+                    y: p.y,
+                    w,
+                    h,
                 };
             }
 
@@ -3461,10 +3493,18 @@ export default class Boss2 extends BaseBoss {
                             ? VIEW.fireFx
                             : VIEW.fireImpact
                     )
-                    : VIEW[p.kind];
+                    : p.kind === "p3Field"
+                        ? (
+                            p.fx === "fire"
+                                ? VIEW.p3Fire
+                                : VIEW.p3Field
+                        )
+                        : VIEW[p.kind];
 
+            // 炎の床と第三形態の床は、ボス(深度5)より奥に描く
             v.setDepth(
-                p.kind === "fireFx" && p.fx === "floor"
+                (p.kind === "fireFx" && p.fx === "floor") ||
+                p.kind === "p3Field"
                     ? 4
                     : 7
             );
@@ -3475,6 +3515,11 @@ export default class Boss2 extends BaseBoss {
 
             if (p.kind === "beam") {
                 this.renderBeam(p, v);
+                continue;
+            }
+
+            if (p.kind === "p3Field") {
+                this.renderP3Field(p, v);
                 continue;
             }
 
@@ -3561,6 +3606,18 @@ export default class Boss2 extends BaseBoss {
         // プレイヤーにヒットしただけでは切り替えない
         if (a?.fireDrop && this.dropStopped) {
             return "boss2_stun";
+        }
+
+        // 第三形態の変身(中央の上空で構える)と、再登場の床の技
+        if (a?.change3) {
+            return "boss2_change3";
+        }
+
+        if (
+            a?.change3Appear &&
+            (st === BS.TELEGRAPH || inAction)
+        ) {
+            return "boss2_change3attack";
         }
 
         if (a?.hail) {
@@ -3664,6 +3721,13 @@ export default class Boss2 extends BaseBoss {
             ) {
                 return "boss2_iceblockattack";
             }
+        }
+
+        // 第三形態の通常時: 右向きは mood2、左向きは第一形態と同じ画像
+        if (this.phase3) {
+            return this.facing > 0
+                ? "boss2_mood2"
+                : "boss2";
         }
 
         return this.phase2
