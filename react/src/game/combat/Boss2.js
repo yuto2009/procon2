@@ -4,9 +4,12 @@ import { S } from "./Fighter";
 import { DODGE } from "./frameData";
 
 // ───────── 一回きりの演出のスイッチ ─────────
-const ONE_SHOT_EVENTS = false; //trueで必殺技を打つ falseで打たない
-const START_IN_PHASE2 = true; //trueで必殺技を全部うって最初から第二形態  
-const SKIP_PHASE2_TRANSFORM_ATTACK = true; //true 必殺技を打たずに最初から第二形態
+const ONE_SHOT_EVENTS = true; //trueで必殺技を打つ falseで打たない
+const START_IN_PHASE2 = false; //trueで必殺技を全部うって最初から第二形態  
+const SKIP_PHASE2_TRANSFORM_ATTACK = false; //true 必殺技を打たずに最初から第二形態
+
+const START_IN_PHASE3 = false; //trueで最初から第三形態(第二形態・第三形態の演出を全部飛ばす)
+const SKIP_PHASE3_TRANSFORM_ATTACK = false; //true HPが半分を切っても、変身の演出と床の技を打たずに第三形態になる
 
 // 炎エフェクトのON/OFF
 const FLOOR_FIRE_ON = true;
@@ -138,8 +141,8 @@ const FAR_WARP_CHANCE = 0.5;       // 遠距離で瞬間移動からの近距離
 const WARP_DISTANCE = 100;         // 瞬間移動後の、相手とボス中心の横距離(近距離の境目より内側)
 
 // ───────── 第二形態: 待機時間 ─────────
-const PHASE2_FAR_WAIT = 15;        // 相手が遠いとき、次の行動に入るまでの待機フレーム
-const PHASE2_NEAR_WAIT = 23;       // 相手が近いとき、次の行動に入るまでの待機フレーム
+const PHASE2_FAR_WAIT = 10;        // 相手が遠いとき、次の行動に入るまでの待機フレーム
+const PHASE2_NEAR_WAIT = 20;       // 相手が近いとき、次の行動に入るまでの待機フレーム
 
 // ───────── 第二形態: ファイアドロップ ─────────
 const DROP_JUMP_CHANCE = 0.5;       // 空中ルートを選ぶ確率(相手の高さは関係なく常にこの確率で抽選)
@@ -148,6 +151,31 @@ const DROP_KICK_DASH_SPEED = 16;    // 突進速度(狙った方向に沿った1
 const DROP_AIR_STARTUP_EXTRA = 12;  // 空中ルートの追加前隙
 const DROP_FACE_LOCK = 2;           // 前隙の最後の何フレームで狙いを固定するか
 const DROP_STOP_FRAMES = 20;        // 壁・床に当たって止まった後、突進状態のまま動かず硬直するフレーム数
+
+// ───────── 第三形態 ─────────
+const PHASE3_HP_RATIO = 0.5;       // HPがこの割合以下で第三形態へ
+const PHASE3_CLOSE_RANGE = 110;    // 第三形態の近距離・遠距離の境目
+const PHASE3_FAR_WAIT = 10;        // 相手が遠いとき、次の行動に入るまでの待機フレーム
+const PHASE3_NEAR_WAIT = 20;       // 相手が近いとき、次の行動に入るまでの待機フレーム
+
+// 近距離の技の割合(残りが蹴り)
+const P3_UPPER_CHANCE = 0.3;       // アッパー
+const P3_FOOT_CHANCE = 0.3;        // 足攻撃
+const P3_BACKSTEP_CHANCE = 0.05;   // バックステップ
+const P3_SHOCK_CHANCE = 0.05;      // アイスショック
+
+// 頭上に剣を出したあとの反応の割合(残りが剣に同期した瞬間移動コンボ)
+const P3_HEAD_BLOCK_CHANCE = 0.25; // 氷塊を落とす
+const P3_HEAD_SHOCK_CHANCE = 0.25; // アイスショック
+const P3_HEAD_DASH_CHANCE = 0.25;  // 単体突進
+const P3_SYNC_TIMEOUT = 180;       // 剣の3本目を待つ最大フレーム(3本目が来ないときの保険)
+
+// 変身演出の床の技
+const P3_APPEAR_DELAY = 30;        // ビームと氷塊が全部終わってから再登場するまでの間
+const P3_FIELD_WARN = 40;          // 床が半透明で出てから、当たり判定が出るまで
+const P3_FIELD_LIFE = 4;           // 当たり判定が出ている時間(一瞬で消える)
+const P3_FIELD_TOP = 0;            // 床の上端(画面の上)
+const P3_ONE_HIT = 99999;          // どれだけHPがあっても一撃になるダメージ
 
 const NONE = {
     range: 0,
@@ -275,7 +303,7 @@ export const BOSS2_ATTACKS = {
     firePunch: {
         fireMelee: true,
         firePunch: true,
-        startup: 20,
+        startup: 15,
         active: 8,
         recovery: 34,
         pull: BODY_W / 2,
@@ -310,7 +338,7 @@ export const BOSS2_ATTACKS = {
     fireUpper: {
         fireMelee: true,
         fireUpper: true,
-        startup: 17,
+        startup: 15,
         active: 8,
         recovery: 40,
         range: 120 + MELEE_REACH_BONUS,
@@ -332,9 +360,9 @@ export const BOSS2_ATTACKS = {
         startup: 16,
         active: 8,
         recovery: 36,
-        range: 200 + MELEE_REACH_BONUS,   // 範囲を大きくした
+        range: 170 + MELEE_REACH_BONUS,   // 範囲を大きくした
         height: 160,
-        pull: 90,                         // 判定をボス本体の近くへ寄せる
+        pull: 60,                         // 判定をボス本体の近くへ寄せる
         launch: 680,        // アッパー(600)より少し高く浮かせる
         damage: 30,
         stamina: 0,
@@ -352,6 +380,43 @@ export const BOSS2_ATTACKS = {
         active: 1,
         recovery: 0,
         ...NONE,
+    },
+
+    // ───────── 第三形態の変身 ─────────
+
+    // 変身: 中央の上空へ消えて移動し、氷塊の雨とビームを同時に打つ
+    change3: {
+        noBody: true,
+        change3: true,
+        air: true,
+        startup: HAIL_VANISH_FRAMES + HAIL_SHOW_FRAMES,
+        active: 20,
+        recovery: 900,
+        ...NONE,
+    },
+
+    // 再登場: 中央の地面に出て、ステージ全体を氷と炎の床で埋める
+    change3Appear: {
+        noBody: true,
+        change3Appear: true,
+        startup: 10,
+        active: 20,
+        recovery: 60,
+        ...NONE,
+    },
+
+    // 床の当たり判定: 当たればHPに関係なく一撃
+    p3FieldHit: {
+        projectile: true,
+        parryable: false,
+        range: 0,
+        height: 0,
+        damage: P3_ONE_HIT,
+        stamina: 0,
+        hitstun: 30,
+        knockback: 0,
+        hitStop: 0,
+        shake: 0.02,
     },
 
     // ───────── ファイアドロップ ─────────
@@ -564,6 +629,19 @@ const VIEW = {
         h: 140,
         originY: 0.5,
     },
+    // 第三形態の床(画像は描画時にステージの半分へ引き伸ばす)
+    p3Field: {
+        key: "boss2_icechange3",
+        w: 1,
+        h: 1,
+        originY: 0.5,
+    },
+    p3Fire: {
+        key: "boss2_firechange3",
+        w: 1,
+        h: 1,
+        originY: 0.5,
+    },
 };
 
 function blankProj() {
@@ -645,6 +723,12 @@ export default class Boss2 extends BaseBoss {
 
         // スタン・パリィ・壁や床に当たって止まったときの画像
         L("boss2_stun", "boss2stun.png");
+
+        // 第三形態
+        L("boss2_change3", "boss2change3.png");
+        L("boss2_change3attack", "boss2change3attack.png");
+        L("boss2_icechange3", "boss2icechange3.png");
+        L("boss2_firechange3", "boss2firechange3.png");
     }
 
     constructor(scene, x, groundY, opts = {}) {
@@ -698,6 +782,14 @@ export default class Boss2 extends BaseBoss {
         this.comboHit = false;
         this.comboDodged = false;
 
+        // 第三形態の状態
+        this.phase3 = false;
+        this.p3Wait = 0;                // 再登場までの待ちフレーム
+        this.swordSync = false;         // 空中突進を剣の3本目に合わせるコンボ中か
+        this.syncWait = 0;              // 3本目を待ったフレーム数
+        this.thirdSwordOut = false;     // 頭上の剣の3本目が飛んだか
+        this.headSwordLaunched = 0;     // 頭上の剣が飛んだ本数
+
         // ファイアドロップの状態
         this.dropJump = false;              // 空中ルートかどうか
         this.dropGroundY =                  // 地上ルートのボス中心Y
@@ -715,6 +807,12 @@ export default class Boss2 extends BaseBoss {
 
         if (START_IN_PHASE2) {
             this.phase2 = true;
+            this.openingDone = true;
+        }
+
+        if (START_IN_PHASE3) {
+            this.phase2 = true;
+            this.phase3 = true;
             this.openingDone = true;
         }
     }
@@ -790,6 +888,28 @@ export default class Boss2 extends BaseBoss {
                 this.enter(BS.TELEGRAPH);
                 return;
             }
+        }
+
+        // 第三形態への移行(HPが半分以下になったら1回だけ)
+        if (
+            ONE_SHOT_EVENTS &&
+            this.phase2 &&
+            !this.phase3 &&
+            this.hp <= this.maxHp * PHASE3_HP_RATIO
+        ) {
+            this.phase3 = true;
+
+            if (!SKIP_PHASE3_TRANSFORM_ATTACK) {
+                this.p3Wait = 0;
+                this.attack = BOSS2_ATTACKS.change3;
+                this.enter(BS.TELEGRAPH);
+                return;
+            }
+        }
+
+        if (this.phase3) {
+            this.tickIdlePhase3(nearest);
+            return;
         }
 
         if (this.phase2) {
@@ -901,6 +1021,88 @@ export default class Boss2 extends BaseBoss {
         this.enter(BS.TELEGRAPH);
     }
 
+    // 頭上に浮いている剣(ボス近くの剣は除く)があるか
+    headSwordsHovering() {
+        return this.projs.some(
+            (p) =>
+                p.active &&
+                p.kind === "sword" &&
+                p.hovering &&
+                !p.bossHover
+        );
+    }
+
+    // 第三形態の待機: 歩かず、遠距離は第一形態・近距離は第二形態をもとにした技を選ぶ
+    tickIdlePhase3(nearest) {
+        const dx = nearest.sprite.x - this.sprite.x;
+
+        // 近距離か遠距離か(待機時間と技の抽選に使う)
+        const far = Math.abs(dx) > PHASE3_CLOSE_RANGE;
+        const wait = far ? PHASE3_FAR_WAIT : PHASE3_NEAR_WAIT;
+
+        // 頭上に剣が浮いているときの反応
+        if (this.headSwordsHovering()) {
+            if (!this.headRainFired) return;
+
+            if (!this.headRainReact && this.frame <= wait) return;
+
+            this.headRainReact = false;
+
+            const r = Math.random();
+            let t = P3_HEAD_BLOCK_CHANCE;
+
+            if (r < t) {
+                this.attack = BOSS2_ATTACKS.iceBlock;
+            } else if (r < (t += P3_HEAD_SHOCK_CHANCE)) {
+                this.attack = BOSS2_ATTACKS.iceShock;
+            } else if (r < (t += P3_HEAD_DASH_CHANCE)) {
+                // 単体突進(地上か空中かは抽選)
+                this.startDropFollowUp(nearest);
+                return;
+            } else {
+                // 瞬間移動のコンボ。最後の突進は必ず空中で、剣の3本目に合わせる
+                this.swordSync = true;
+                this.attack = BOSS2_ATTACKS.fireWarp;
+            }
+
+            this.enter(BS.TELEGRAPH);
+            return;
+        }
+
+        if (this.frame <= wait) return;
+
+        if (far) {
+            // 遠距離: 氷塊50% / 剣30% / 瞬間移動からのコンボ20%
+            const r = Math.random();
+
+            if (r < FAR_BLOCK_CHANCE) {
+                this.attack = this.chooseIceBlockVariant();
+            } else if (r < FAR_BLOCK_CHANCE + FAR_RAIN_CHANCE) {
+                this.attack = BOSS2_ATTACKS.iceSwordRain;
+            } else {
+                this.attack = BOSS2_ATTACKS.fireWarp;
+            }
+        } else {
+            // 近距離: アッパー / 足攻撃 / バックステップ / アイスショック / 蹴り(残り)
+            const r = Math.random();
+            let t = P3_UPPER_CHANCE;
+
+            if (r < t) {
+                this.attack = BOSS2_ATTACKS.fireUpper;
+            } else if (r < (t += P3_FOOT_CHANCE)) {
+                this.attack = BOSS2_ATTACKS.fireFoot;
+            } else if (r < (t += P3_BACKSTEP_CHANCE)) {
+                this.attack = BOSS2_ATTACKS.backstepAttack;
+            } else if (r < (t += P3_SHOCK_CHANCE)) {
+                this.attack = BOSS2_ATTACKS.iceShock;
+            } else {
+                this.attack = BOSS2_ATTACKS.fireKick;
+            }
+        }
+
+        this.enter(BS.TELEGRAPH);
+    }
+
     // ───────── 攻撃の流れ ─────────
 
     onTelegraphTick() {
@@ -909,6 +1111,20 @@ export default class Boss2 extends BaseBoss {
             // 固定フレームより前だけ、相手を追って狙いを更新
             if (this.frame < this.attack.startup - DROP_FACE_LOCK) {
                 this.updateDropAim();
+            }
+
+            // 剣に同期するコンボ: 空中の前隙の終わり手前で、剣の3本目が飛ぶまで待つ
+            // (待っている間も狙いは相手を追う。3本目が出ている・剣が消えた・待ちすぎたら待たない)
+            if (
+                this.swordSync &&
+                this.dropJump &&
+                !this.thirdSwordOut &&
+                this.headSwordsHovering() &&
+                this.frame >= this.attack.startup - DROP_FACE_LOCK &&
+                this.syncWait++ < P3_SYNC_TIMEOUT
+            ) {
+                this.frame =
+                    this.attack.startup - DROP_FACE_LOCK - 2;
             }
 
             // 高さは固定: 空中ルートは瞬間移動した高度、地上ルートは地面
@@ -1056,6 +1272,15 @@ export default class Boss2 extends BaseBoss {
             // 相手の前へ瞬間移動
             this.warpToTarget(players);
 
+        } else if (a.change3) {
+            // 第三形態の変身: 氷塊の雨とビームを同時に打つ
+            this.spawnHail();
+            this.startBeamSequence(players);
+
+        } else if (a.change3Appear) {
+            // 再登場: 左を氷、右を炎の床で埋める
+            this.spawnPhase3Fields();
+
         } else if (a.backstep) {
             this.fireVolley();
 
@@ -1129,7 +1354,9 @@ export default class Boss2 extends BaseBoss {
         this.dropTarget = target;
 
         // 空中ルートか地上ルートかを抽選(相手の高さは関係なし)
-        this.dropJump = Math.random() < DROP_JUMP_CHANCE;
+        // 剣に同期するコンボ(swordSync)のときは必ず空中ルート
+        this.dropJump =
+            this.swordSync || Math.random() < DROP_JUMP_CHANCE;
 
         // 空中ルートは前隙を延長
         this.attack = {
@@ -1202,6 +1429,20 @@ export default class Boss2 extends BaseBoss {
         ) {
             this.startDropFollowUp();
             return;
+        }
+
+        // 剣に同期するコンボは、途切れても追撃のコンボは出さず、空中突進へ進む
+        // (突進の前隙で剣の3本目を待つ)
+        if (this.swordSync && a?.fireMelee && !a?.fireDrop) {
+            const t =
+                this.comboTarget?.hp > 0
+                    ? this.comboTarget
+                    : this.nearestAlive(this.playersRef ?? []);
+
+            if (t) {
+                this.startDropFollowUp(t);
+                return;
+            }
         }
 
         this.enter(BS.RECOVER);
@@ -1458,6 +1699,7 @@ export default class Boss2 extends BaseBoss {
         this.tickBlockTrackingSequences();
         this.tickBossSwordSequence();
         this.tickHailReturn();
+        this.tickPhase3();
         this.tickBeamSequence(players);
 
         for (const p of this.projs) {
@@ -1497,6 +1739,10 @@ export default class Boss2 extends BaseBoss {
 
                 case "fireFx":
                     this.tickFireFx(p, players);
+                    break;
+
+                case "p3Field":
+                    this.tickP3Field(p, players);
                     break;
             }
         }
@@ -1544,6 +1790,12 @@ export default class Boss2 extends BaseBoss {
             this.dropTarget = null;
             this.dropStopped = false;
             this.dropStopLeft = 0;
+
+            // 第三形態の状態をリセット
+            // (thirdSwordOut と headSwordLaunched は、剣を出し直すときに戻す)
+            this.swordSync = false;
+            this.syncWait = 0;
+            this.p3Wait = 0;
         }
 
         if (state === BS.STUN) {
@@ -1597,6 +1849,116 @@ export default class Boss2 extends BaseBoss {
         this.dropTarget = null;
         this.dropStopped = false;
         this.dropStopLeft = 0;
+    }
+
+    // ───────── 第三形態の変身 ─────────
+
+    // 変身で消えている間は無敵
+    receiveHit(attacker, a) {
+        if (this.attack?.change3 && this.hailHidden) return;
+        super.receiveHit(attacker, a);
+    }
+
+    // 変身の進行: 太いビームが全体に広がったら消え、全部終わったら中央の地面に再登場する
+    tickPhase3() {
+        const a = this.attack;
+        if (!a?.change3 || this.state !== BS.RECOVER) return;
+
+        // 太いビームが全体に広がった瞬間に消える
+        if (!this.hailHidden) {
+            const spread = this.projs.some(
+                (p) =>
+                    p.active &&
+                    p.kind === "beam" &&
+                    p.beamMode === "big" &&
+                    p.age >= BEAM_BIG_WARN + BEAM_BIG_DOWN
+            );
+
+            if (spread) this.hailHidden = true;
+            return;
+        }
+
+        // ビームと氷塊が全部終わるまで待つ
+        if (this.isBlockAttackBusy()) return;
+
+        this.p3Wait++;
+
+        if (this.p3Wait >= P3_APPEAR_DELAY) {
+            const { arenaLeft, arenaRight } = this.cfg;
+
+            // ステージ中央の地面に出る
+            this.teleportBoss((arenaLeft + arenaRight) / 2, 0);
+            this.hailAir = false;
+            this.hailHidden = false;
+
+            const t = this.nearestAlive(this.playersRef ?? []);
+            if (t) this.faceToward(t);
+
+            this.attack = BOSS2_ATTACKS.change3Appear;
+            this.enter(BS.TELEGRAPH);
+        }
+    }
+
+    // 床の大きさ: 横はステージの半分、縦は画面の上から地面の少し下まで
+    p3FieldSize() {
+        const { arenaLeft, arenaRight } = this.cfg;
+
+        return {
+            w: (arenaRight - arenaLeft) / 2,
+            h: this.groundY + 20 - P3_FIELD_TOP,
+        };
+    }
+
+    // 左半分を氷、右半分を炎の床で埋める
+    spawnPhase3Fields() {
+        const { arenaLeft } = this.cfg;
+        const { w, h } = this.p3FieldSize();
+        const a = BOSS2_ATTACKS.p3FieldHit;
+        const y = P3_FIELD_TOP + h / 2;
+
+        this.spawnProj("p3Field", {
+            a,
+            fx: "ice",
+            x: arenaLeft + w / 2,
+            y,
+        });
+
+        this.spawnProj("p3Field", {
+            a,
+            fx: "fire",
+            x: arenaLeft + w * 1.5,
+            y,
+        });
+    }
+
+    // 床の更新: 予兆のあいだは当たり判定なし、そのあと一瞬だけ当たり判定が出て消える
+    tickP3Field(p, players) {
+        const { w, h } = this.p3FieldSize();
+
+        if (
+            p.age >= P3_FIELD_WARN &&
+            p.age < P3_FIELD_WARN + P3_FIELD_LIFE
+        ) {
+            this.hitPlayers(p, players, w, h);
+        }
+
+        if (p.age >= P3_FIELD_WARN + P3_FIELD_LIFE) {
+            p.active = false;
+        }
+    }
+
+    // 床の描画: 予兆のあいだは半透明、当たり判定が出ている間は不透明
+    renderP3Field(p, v) {
+        const { w, h } = this.p3FieldSize();
+
+        v.setVisible(true)
+            .setAlpha(p.age >= P3_FIELD_WARN ? 1 : 0.35)
+            .setOrigin(0.5, 0.5)
+            .setDisplaySize(w, h)
+            .setPosition(p.x, p.y)
+            .setRotation(0)
+            .setFlipX(false)
+            .setFlipY(false);
     }
 
     // ───────── 第二形態: 炎エフェクト ─────────
@@ -1700,6 +2062,10 @@ export default class Boss2 extends BaseBoss {
 
         this.headRainFired = false;
         this.headRainReact = false;
+
+        // 頭上の剣が飛んだ本数を数え直す(3本目の判定に使う)
+        this.headSwordLaunched = 0;
+        this.thirdSwordOut = false;
 
         const a = BOSS2_ATTACKS.rainSword;
 
@@ -1843,6 +2209,15 @@ export default class Boss2 extends BaseBoss {
             if (p.launchIn <= 0) {
                 p.hovering = false;
 
+                // 頭上の剣が飛んだ本数を数える(3本目が飛んだら thirdSwordOut)
+                if (!p.bossHover) {
+                    this.headSwordLaunched++;
+
+                    if (this.headSwordLaunched >= 3) {
+                        this.thirdSwordOut = true;
+                    }
+                }
+
                 if (
                     !p.bossHover &&
                     !this.headRainFired
@@ -1954,7 +2329,9 @@ export default class Boss2 extends BaseBoss {
     tickHailReturn() {
         const a = this.attack;
 
+        // 第三形態の変身は、再登場の処理(tickPhase3)に任せる
         if (
+            a?.change3 ||
             !a?.air ||
             this.state !== BS.RECOVER ||
             !this.hailAir
