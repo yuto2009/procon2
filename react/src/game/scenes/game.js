@@ -23,6 +23,7 @@ export default class GameScene extends Phaser.Scene {
         this.load.spritesheet("player", "/assets/player.png", { frameWidth: 96, frameHeight: 32 });
         this.load.spritesheet("enemy", "/assets/enemy.png", { frameWidth: 96, frameHeight: 32 });
         this.load.image("dungeonTiles", "/assets/map/dungeon_tiles.png");
+        this.load.image("slime","/assets/slime.png");
     }
 
     create() {

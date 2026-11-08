@@ -379,7 +379,8 @@ export default class Fighter {
 
         // 変更前: this.hp -= a.damage;
         const raw = a.damage * (attacker.damageMul ?? 1) + (1 - (this.defence ?? 0));
-        const damage = a.damage > 0 ? Math.max(1, Math.round(raw)) : 0;   // 当たれば最低1ダメージ        this.hp -= damage;
+        const damage = a.damage > 0 ? Math.max(1, Math.round(raw)) : 0;   // 当たれば最低1ダメージ        
+        this.hp -= damage;
 
         const dir = Math.sign(this.sprite.x - attacker.sprite.x) || 1;
         this.body.setVelocityX(dir * a.knockback);
