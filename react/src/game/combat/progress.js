@@ -37,7 +37,6 @@ export function grantXp(scene, player, amount) {
   scene.popText(player.sprite.x, player.sprite.y - 90, `+${amount} XP`, "#ffee66");
 
   if (levels > 0) {
-    player.applyStats(statsFor(progress.level));
     scene.popText(
       player.sprite.x, player.sprite.y - 120,
       `LEVEL UP! Lv${progress.level}`, "#ff99ff"

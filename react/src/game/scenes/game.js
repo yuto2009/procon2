@@ -9,6 +9,8 @@ import { MONSTERS, SPAWN } from "../combat/monsterData";
 import { generateCave, groundY, TILE } from "../map/mapgen";
 import { getTheme } from "../map/mapThemes";
 import { buildCave, buildTorches, buildAtmosphere } from "../map/MapRenderer";
+import { computeStats, getInventory, quickHeal, rollDrops } from "../combat/inventory";
+import { ITEMS } from "../combat/itemData";
 const STEP = 1000 / FPS;
 
 export default class GameScene extends Phaser.Scene {
@@ -20,17 +22,31 @@ export default class GameScene extends Phaser.Scene {
         this.socket = window.socket;
         this.load.spritesheet("player", "/assets/player.png", { frameWidth: 96, frameHeight: 32 });
         this.load.spritesheet("enemy", "/assets/enemy.png", { frameWidth: 96, frameHeight: 32 });
-        this.load.image("dungeonTiles","/assets/map/dungeon_tiles.png");
+        this.load.image("dungeonTiles", "/assets/map/dungeon_tiles.png");
     }
 
     create() {
+        // Q:回復薬 / ESC:メニュー
+        this.menuLock = 0;
+        this.input.keyboard.on("keydown-ESC", () => this.openMenu());
+
+        const onResume = () => {
+            this.menuLock = performance.now() + 250;   // 閉じたESCで、すぐ開き直さない
+            this.pending = {};                          // 止まっている間の入力を捨てる
+        };
+        this.events.on("resume", onResume);
+        this.events.once("shutdown", () => this.events.off("resume", onResume));
+
+        this.itemText = this.add.text(250, 54, "", {
+            fontSize: "14px", color: "#aaffcc",
+        }).setScrollFactor(0).setDepth(10);
         // 進行状況(レベル・経験値)。無ければ新規作成
         let progress = this.registry.get("progress");
         if (!progress) {
             progress = createProgress();
             this.registry.set("progress", progress);
         }
-        const stats = statsFor(progress.level);
+        const stats = computeStats(progress.level, getInventory(this.registry));
         const myName = this.registry.get("playerName") ?? "PLAYER";
         const LastPosition = this.registry.get("LastPosition");
         const randomInt = (min, max) =>
@@ -115,6 +131,7 @@ export default class GameScene extends Phaser.Scene {
             maxHp: stats.maxHp,
             maxStamina: stats.maxStamina,
             damageMul: stats.damageMul,
+            defence: stats.defence,
             weapon: this.registry.get("weapon") ?? "sword",
         });
         this.dummy = new Fighter(this, this.dummySpawnX, this.dummySpawnY, {
@@ -134,7 +151,7 @@ export default class GameScene extends Phaser.Scene {
         this.cameras.main.startFollow(this.player.sprite, true, 0.1, 0.1);
 
         // 入力
-        this.keys = this.input.keyboard.addKeys("A,D,W,LEFT,RIGHT,UP,SPACE,J,K,L,SHIFT");
+        this.keys = this.input.keyboard.addKeys("A,D,W,LEFT,RIGHT,UP,SPACE,J,K,L,SHIFT,Q");
         this.pending = {};
         this.acc = 0;
         this.dummyTimer = 0;
@@ -165,9 +182,15 @@ export default class GameScene extends Phaser.Scene {
             if (attacker !== this.player) return;
 
             if (victim === this.dummy) {
-                grantXp(this, this.player, 20000000000);
+                grantXp(this, this.player, 20);   // テスト用の巨大な値は戻しておくのがおすすめ
             } else if (victim instanceof Monster) {
                 grantXp(this, this.player, victim.def.xp);
+
+                const got = rollDrops(getInventory(this.registry), victim.def.drops);
+                got.forEach((id, i) => {
+                    this.popText(victim.sprite.x, victim.sprite.y - 130 - i * 28,
+                        `${ITEMS[id].name} 入手!`, "#aaffcc");
+                });
             }
         };
         this.events.on("kill", onKill);
@@ -203,6 +226,19 @@ export default class GameScene extends Phaser.Scene {
         if (J(k.K)) this.pending.fist = true;
         if (J(k.L)) this.pending.parry = true;
         if (J(k.SHIFT)) this.pending.dodge = true;
+        if (J(k.Q)) quickHeal(this, this.player);
+    }
+    // メニューを開く(今のシーンは止まる)
+    openMenu() {
+        if (this.gameOver || performance.now() < this.menuLock) return;
+        this.scene.launch("MenuScene", { owner: "GameScene" });
+        this.scene.pause();
+    }
+
+    // レベル・装備が変わった時に、能力値を作り直す
+    refreshStats() {
+        const p = this.registry.get("progress");
+        this.player.applyStats(computeStats(p.level, getInventory(this.registry)));
     }
 
     update(_, delta) {
@@ -463,6 +499,8 @@ export default class GameScene extends Phaser.Scene {
         this.levelText.setText(
             p.level >= MAX_LEVEL ? `Lv ${p.level} MAX` : `Lv ${p.level}  ${p.xp}/${need}`
         );
+        const inv = getInventory(this.registry);
+        const potions = (inv.items.potion ?? 0) + (inv.items.hiPotion ?? 0);
     }
 
     popText(x, y, msg, color = "#66ffff") {

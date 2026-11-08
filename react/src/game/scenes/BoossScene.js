@@ -3,6 +3,8 @@ import Fighter, { S } from "../combat/Fighter";
 import { FPS, STAMINA, FX, ATTACKS, PARRY } from "../combat/frameData";
 import { createProgress, statsFor, grantXp, xpToNext, MAX_LEVEL } from "../combat/progress";
 import { getBossClass } from "../combat/bossRegistry";
+import { computeStats, getInventory, quickHeal, rollDrops } from "../combat/inventory";
+import { ITEMS } from "../combat/itemData";
 
 const socket = window.socket;
 const STEP = 1000 / FPS;
@@ -79,13 +81,16 @@ export default class BossScene extends Phaser.Scene {
         };
 
         bar(20, 560, 220, 18, this.player.hp / this.player.maxHp, 0x44cc66);
-        bar(20, 582, 220, 12, this.player.stamina / this.maxStamina, 0xffcc33);
+        bar(20, 582, 220, 12, this.player.stamina / this.player.maxStamina, 0xffcc33);
         const p = this.registry.get("progress");
         const need = xpToNext(p.level);
         bar(20, 600 - 4, 220, 4, p.level >= MAX_LEVEL ? 1 : p.xp / need, 0x66aaff);
         this.levelText.setText(
             p.level >= MAX_LEVEL ? `Lv ${p.level} MAX` : `Lv ${p.level}  ${p.xp}/${need}`
         );
+        const inv = getInventory(this.registry);
+        const potions = (inv.items.potion ?? 0) + (inv.items.hiPotion ?? 0);
+        this.itemText.setText(`Q:回復薬 x${potions}`);
     }
 
     popText(x, y, msg, color = "#66ffff") {
@@ -289,7 +294,7 @@ export default class BossScene extends Phaser.Scene {
             progress = createProgress();
             this.registry.set("progress", progress);
         }
-        const stats = statsFor(progress.level);
+        const stats = computeStats(progress.level, getInventory(this.registry));
 
         this.player = new Fighter(this, spawnX, 520, {
             color: role === "guest" ? 0xffcc66 : 0x66aaff,
@@ -297,6 +302,7 @@ export default class BossScene extends Phaser.Scene {
             maxHp: stats.maxHp,
             maxStamina: stats.maxStamina,
             damageMul: stats.damageMul,
+            defense: stats.defense,               // ← 追加
             weapon: this.registry.get("weapon") ?? "sword",
         });
 
@@ -493,6 +499,9 @@ export default class BossScene extends Phaser.Scene {
         this.levelText = this.add.text(20, 538, "", {
             fontSize: "16px", color: "#ffee66", fontStyle: "bold",
         }).setScrollFactor(0).setDepth(25);
+        this.itemText = this.add.text(250, 562, "", {
+            fontSize: "14px", color: "#aaffcc",
+        }).setScrollFactor(0).setDepth(25);
         // パリィ・被弾の演出
         const onParry = (f) => {
             this.popText(f.sprite.x, f.sprite.y - 50, "PARRY!");
@@ -508,8 +517,16 @@ export default class BossScene extends Phaser.Scene {
         };
 
         const onBossDead = () => {
-            console.log("ボスを撃破しました!");
             grantXp(this, this.player, 300);
+            const got = rollDrops(getInventory(this.registry), [
+                { id: "hiPotion", chance: 1 },
+                { id: "ironHelm", chance: 1 },
+                { id: "powerRing", chance: 1 },
+            ]);
+            got.forEach((id, i) => {
+                this.popText(this.player.sprite.x, this.player.sprite.y - 150 - i * 28,
+                    `${ITEMS[id].name} 入手!`, "#aaffcc");
+            });
         };
 
         this.events.on("parry", onParry);
@@ -523,7 +540,7 @@ export default class BossScene extends Phaser.Scene {
         });
 
         this.keys = this.input.keyboard.addKeys(
-            "A,D,W,LEFT,RIGHT,UP,SPACE,J,K,L,SHIFT"
+            "A,D,W,LEFT,RIGHT,UP,SPACE,J,K,L,SHIFT,Q"
         );
 
         this.pending = {};
@@ -540,6 +557,12 @@ export default class BossScene extends Phaser.Scene {
         if (J(k.K)) this.pending.fist = true;
         if (J(k.L)) this.pending.parry = true;
         if (J(k.SHIFT) || J(k.SPACE)) this.pending.dodge = true;
+        if (J(k.Q)) quickHeal(this, this.player);
+    }
+
+    refreshStats() {
+        const p = this.registry.get("progress");
+        this.player.applyStats(computeStats(p.level, getInventory(this.registry)));
     }
 
     update(_, delta) {

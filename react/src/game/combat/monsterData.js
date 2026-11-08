@@ -10,6 +10,11 @@ export const MONSTERS = {
         attackRange: 60,     // この距離内で攻撃を始める
         attackCooldown: 90,  // 攻撃後の待ち(フレーム)
         xp: 12,
+        drops: [
+            { id: "potion", chance: 0.25 },
+            { id: "tonic", chance: 0.08 },
+            { id: "lealtherCap", chance: 0.04 },
+        ],
     },
     goblin: {
         name: "ゴブリン",
@@ -21,6 +26,15 @@ export const MONSTERS = {
         attackRange: 70,
         attackCooldown: 70,
         xp: 30,
+        drops: [
+            { id: "potion", chance: 0.35 },
+            { id: "hiPotion", chance: 0.08 },
+            { id: "leatherArmor", chance: 0.06 },
+            { id: "ironHelm", chance: 0.04 },
+            { id: "staminaCharm", chance: 0.04 },
+            { id: "powerRing", chance: 0.03 },
+            { id: "chainMail", chance: 0.02 },
+        ],
     },
 };
 

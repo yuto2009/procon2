@@ -63,7 +63,7 @@ export default class Fighter {
         scene,
         x,
         y,
-        { color, texture, maxHp = 100, maxStamina = STAMINA.max, damageMul = 1, weapon = "sword" }
+        { color, texture, maxHp = 100, maxStamina = STAMINA.max, damageMul = 1, defence = 0, weapon = "sword" }
     ) {
         this.scene = scene;
         this.baseColor = color;
@@ -93,6 +93,7 @@ export default class Fighter {
         this.maxHp = maxHp;
         this.maxStamina = maxStamina;
         this.damageMul = damageMul;
+        this.defence = defence;
         this.weapon = weapon;
         this.arrows = [];
 
@@ -377,8 +378,8 @@ export default class Fighter {
         }
 
         // 変更前: this.hp -= a.damage;
-        const damage = Math.round(a.damage * (attacker.damageMul ?? 1));
-        this.hp -= damage;
+        const raw = a.damage * (attacker.damageMul ?? 1) + (1 - (this.defence ?? 0));
+        const damage = a.damage > 0 ? Math.max(1, Math.round(raw)) : 0;   // 当たれば最低1ダメージ        this.hp -= damage;
 
         const dir = Math.sign(this.sprite.x - attacker.sprite.x) || 1;
         this.body.setVelocityX(dir * a.knockback);
@@ -401,6 +402,7 @@ export default class Fighter {
         this.maxHp = maxHp;
         this.maxStamina = maxStamina;
         this.damageMul = damageMul;
+        this.defence = defence;
         this.hp = Math.min(this.maxHp, this.hp + hpUp);
         this.stamina = Math.min(this.maxStamina, this.stamina + staUp);
     }
