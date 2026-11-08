@@ -8,8 +8,12 @@ const ONE_SHOT_EVENTS = true; //trueで必殺技を打つ falseで打たない
 const START_IN_PHASE2 = false; //trueで必殺技を全部うって最初から第二形態  
 const SKIP_PHASE2_TRANSFORM_ATTACK = false; //true 必殺技を打たずに最初から第二形態
 
-const START_IN_PHASE3 = false; //trueで最初から第三形態(第二形態・第三形態の演出を全部飛ばす)
+const START_IN_PHASE3 = true; //trueで最初から第三形態(第二形態・第三形態の演出を全部飛ばす)
 const SKIP_PHASE3_TRANSFORM_ATTACK = false; //true HPが半分を切っても、変身の演出と床の技を打たずに第三形態になる
+
+// テスト用: trueにすると、第三形態の必殺技(変身・氷の雨とビーム・床)だけを繰り返し打つ(通常の技は出ない)
+const TEST_PHASE3_FINISHER_ONLY = false;
+const TEST_PHASE3_FINISHER_WAIT = 60; // テスト中、必殺技が終わってから次を打つまでの待機フレーム
 
 // 炎エフェクトのON/OFF
 const FLOOR_FIRE_ON = true;
@@ -97,6 +101,8 @@ const HOVER_HEIGHT = 150;
 const LAUNCH_FIRST = 120;
 const LAUNCH_SECOND = 240;
 const FIRST_GROUP = [2, 3];
+const SWORD_SHAKE_FRAMES = 30;   // 頭上の剣が飛ぶ何フレーム前から震えるか(30フレーム = 0.5秒)
+const SWORD_SHAKE_AMOUNT = 2;    // 震える幅(px)。小さいほど細かく見える
 
 const PROJ_POOL = 200;                  // 飛び道具の最大同時数
 const SWORD_ART_OFFSET = Math.PI / 2;   // 剣の画像の向きの補正
@@ -155,8 +161,8 @@ const DROP_STOP_FRAMES = 20;        // 壁・床に当たって止まった後�
 // ───────── 第三形態 ─────────
 const PHASE3_HP_RATIO = 0.5;       // HPがこの割合以下で第三形態へ
 const PHASE3_CLOSE_RANGE = 110;    // 第三形態の近距離・遠距離の境目
-const PHASE3_FAR_WAIT = 10;        // 相手が遠いとき、次の行動に入るまでの待機フレーム
-const PHASE3_NEAR_WAIT = 20;       // 相手が近いとき、次の行動に入るまでの待機フレーム
+const PHASE3_FAR_WAIT = 15;        // 相手が遠いとき、次の行動に入るまでの待機フレーム
+const PHASE3_NEAR_WAIT = 25;       // 相手が近いとき、次の行動に入るまでの待機フレーム
 
 // 近距離の技の割合(残りが蹴り)
 const P3_UPPER_CHANCE = 0.3;       // アッパー
@@ -172,6 +178,7 @@ const P3_SYNC_TIMEOUT = 180;       // 剣の3本目を待つ最大フレーム(3
 
 // 変身演出の床の技
 const P3_APPEAR_DELAY = 30;        // ビームと氷塊が全部終わってから再登場するまでの間
+const P3_HAIL_GAP_WIDTH = 160;     // 変身の氷の雨の隙間の幅(通常の氷の雨 HAIL_GAP_WIDTH より広い)
 const P3_FIELD_WARN = 40;          // 床が半透明で出てから、当たり判定が出るまで
 const P3_FIELD_LIFE = 4;           // 当たり判定が出ている時間(一瞬で消える)
 const P3_FIELD_TOP = 0;            // 床の上端(画面の上)
@@ -729,6 +736,10 @@ export default class Boss2 extends BaseBoss {
         L("boss2_change3attack", "boss2change3attack.png");
         L("boss2_icechange3", "boss2icechange3.png");
         L("boss2_firechange3", "boss2firechange3.png");
+        L("boss2_mood3ice", "boss2mood3ice.png");   // 第三形態の待機(左向き)
+        L("boss2_mood3fire", "boss2mood3fire.png"); // 第三形態の待機(右向き)
+        L("boss2_mood3icehand", "boss2mood3icehand.png");             // 第三形態: 氷塊・剣の前隙
+        L("boss2_mood3icehandattack", "boss2mood3icehandattack.png"); // 第三形態: 氷塊・剣の攻撃と後隙
     }
 
     constructor(scene, x, groundY, opts = {}) {
@@ -815,6 +826,13 @@ export default class Boss2 extends BaseBoss {
             this.phase3 = true;
             this.openingDone = true;
         }
+
+        // テスト用: 最初から第三形態にして、必殺技だけを繰り返す
+        if (TEST_PHASE3_FINISHER_ONLY) {
+            this.phase2 = true;
+            this.phase3 = true;
+            this.openingDone = true;
+        }
     }
 
     // ───────── 行動選択 ─────────
@@ -861,6 +879,16 @@ export default class Boss2 extends BaseBoss {
 
         if (this.isBlockAttackBusy()) {
             this.frame = 0;
+            return;
+        }
+
+        // テスト用: 待機が終わるたびに第三形態の必殺技を打つ(他の技は出さない)
+        if (TEST_PHASE3_FINISHER_ONLY) {
+            if (this.frame <= TEST_PHASE3_FINISHER_WAIT) return;
+
+            this.p3Wait = 0;
+            this.attack = BOSS2_ATTACKS.change3;
+            this.enter(BS.TELEGRAPH);
             return;
         }
 
@@ -1274,11 +1302,11 @@ export default class Boss2 extends BaseBoss {
 
         } else if (a.change3) {
             // 第三形態の変身: 氷塊の雨とビームを同時に打つ
-            this.spawnHail();
+            this.spawnHail(P3_HAIL_GAP_WIDTH);
             this.startBeamSequence(players);
 
         } else if (a.change3Appear) {
-            // 再登場: 左を氷、右を炎の床で埋める
+            // 再登場: 左を炎、右を氷の床で埋める
             this.spawnPhase3Fields();
 
         } else if (a.backstep) {
@@ -1909,7 +1937,7 @@ export default class Boss2 extends BaseBoss {
         };
     }
 
-    // 左半分を氷、右半分を炎の床で埋める
+    // 左半分を炎、右半分を氷の床で埋める
     spawnPhase3Fields() {
         const { arenaLeft } = this.cfg;
         const { w, h } = this.p3FieldSize();
@@ -1918,14 +1946,14 @@ export default class Boss2 extends BaseBoss {
 
         this.spawnProj("p3Field", {
             a,
-            fx: "ice",
+            fx: "fire",
             x: arenaLeft + w / 2,
             y,
         });
 
         this.spawnProj("p3Field", {
             a,
-            fx: "fire",
+            fx: "ice",
             x: arenaLeft + w * 1.5,
             y,
         });
@@ -1957,7 +1985,7 @@ export default class Boss2 extends BaseBoss {
             .setDisplaySize(w, h)
             .setPosition(p.x, p.y)
             .setRotation(0)
-            .setFlipX(false)
+            .setFlipX(true) // 左右を入れ替えたので、画像も左右反転して向きを合わせる
             .setFlipY(false);
     }
 
@@ -2286,7 +2314,8 @@ export default class Boss2 extends BaseBoss {
         this.vy = 0;
     }
 
-    spawnHail() {
+    // gapWidth: 氷の雨の隙間の幅(省略すると通常の幅)
+    spawnHail(gapWidth = HAIL_GAP_WIDTH) {
         const { arenaLeft, arenaRight } = this.cfg;
         const center = (arenaLeft + arenaRight) / 2;
         const a = BOSS2_ATTACKS.iceHailPiece;
@@ -2303,7 +2332,7 @@ export default class Boss2 extends BaseBoss {
                     Math.abs(
                         x - (center + s * HAIL_GAP_OFFSET)
                     ) <
-                    HAIL_GAP_WIDTH / 2
+                    gapWidth / 2
             );
 
             if (inGap) continue;
@@ -3096,6 +3125,7 @@ export default class Boss2 extends BaseBoss {
                 rs: p.rise,
                 h: p.hovering ? 1 : 0,
                 b: p.bossHover ? 1 : 0,
+                li: p.launchIn,
                 bm: p.beamMode === "big" ? 1 : 0,
                 fx:
                     p.fx === "floor"
@@ -3212,6 +3242,7 @@ export default class Boss2 extends BaseBoss {
 
             p.hovering = !!src.h;
             p.bossHover = !!src.b;
+            p.launchIn = Number(src.li) || 0;
 
             p.beamMode =
                 src.bm ? "big" : "thin";
@@ -3453,6 +3484,17 @@ export default class Boss2 extends BaseBoss {
     render() {
         super.render();
 
+        // 第三形態の待機・氷塊・剣の画像は、元絵の向きが他の画像と逆なので、左右反転を逆にする
+        const key = this.view.texture.key;
+        if (
+            key === "boss2_mood3ice" ||
+            key === "boss2_mood3fire" ||
+            key === "boss2_mood3icehand" ||
+            key === "boss2_mood3icehandattack"
+        ) {
+            this.view.setFlipX(this.facing === this.cfg.artFacing);
+        }
+
         const rot = this.poseRotation();
         if (rot === null) return; // 回転していないときは補正なし
 
@@ -3532,6 +3574,21 @@ export default class Boss2 extends BaseBoss {
             let alpha = 1;
             let sinkOffset = 0;
 
+            // 頭上の剣は、飛ぶ直前の SWORD_SHAKE_FRAMES フレームだけ細かく震える(見た目だけで、当たり判定は動かない)
+            let shakeX = 0;
+            let shakeY = 0;
+
+            if (
+                p.kind === "sword" &&
+                p.hovering &&
+                !p.bossHover &&
+                p.launchIn > 0 &&
+                p.launchIn <= SWORD_SHAKE_FRAMES
+            ) {
+                shakeX = (Math.random() * 2 - 1) * SWORD_SHAKE_AMOUNT;
+                shakeY = (Math.random() * 2 - 1) * SWORD_SHAKE_AMOUNT;
+            }
+
             if (p.kind === "icicle") {
                 grow = Math.min(
                     1,
@@ -3572,8 +3629,8 @@ export default class Boss2 extends BaseBoss {
                     dispH * grow
                 )
                 .setPosition(
-                    p.x,
-                    p.y + sinkOffset
+                    p.x + shakeX,
+                    p.y + sinkOffset + shakeY
                 )
                 .setFlipX(false);
 
@@ -3699,12 +3756,17 @@ export default class Boss2 extends BaseBoss {
                 return "boss2_backstepattack";
             }
         } else if (a?.block) {
+            // 第三形態: 前隙は icehand、攻撃と後隙は icehandattack
             if (st === BS.TELEGRAPH) {
-                return "boss2_iceblockwait";
+                return this.phase3
+                    ? "boss2_mood3icehand"
+                    : "boss2_iceblockwait";
             }
 
             if (inAction) {
-                return "boss2_iceblockattack";
+                return this.phase3
+                    ? "boss2_mood3icehandattack"
+                    : "boss2_iceblockattack";
             }
         } else if (a?.shock) {
             if (st === BS.TELEGRAPH) {
@@ -3715,7 +3777,16 @@ export default class Boss2 extends BaseBoss {
                 return "boss2_iceshockattack";
             }
         } else if (a?.rain) {
-            if (
+            // 第三形態: 氷塊と同じく、前隙は icehand、攻撃と後隙は icehandattack
+            if (this.phase3) {
+                if (st === BS.TELEGRAPH) {
+                    return "boss2_mood3icehand";
+                }
+
+                if (inAction) {
+                    return "boss2_mood3icehandattack";
+                }
+            } else if (
                 st === BS.TELEGRAPH ||
                 inAction
             ) {
@@ -3723,11 +3794,11 @@ export default class Boss2 extends BaseBoss {
             }
         }
 
-        // 第三形態の通常時: 右向きは mood2、左向きは第一形態と同じ画像
+        // 第三形態の通常時: 右向きは mood3fire、左向きは mood3ice
         if (this.phase3) {
             return this.facing > 0
-                ? "boss2_mood2"
-                : "boss2";
+                ? "boss2_mood3fire"
+                : "boss2_mood3ice";
         }
 
         return this.phase2
