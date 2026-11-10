@@ -2,18 +2,22 @@
 export const MONSTERS = {
     slime: {
         name: "スライム",
-        tint: 0x66ff88,      // 色で区別する
+        tint: 0x66ff88,
+        image: "slime",              // ← 1枚絵を使う
+        scale: 2,                    // 32px → 64px
+        body: { w: 52, h: 44 },      // 当たり判定の大きさ(見た目に合わせる)
+        footOffset: 2,               // 画像の下の透明な1px分を、地面に合わせる
         maxHp: 40,
-        damageMul: 0.6,      // 攻撃力の倍率(enemySlash が基準)
-        speed: 70,           // 追いかける速さ
-        aggro: 260,          // この距離内でプレイヤーに気づく
-        attackRange: 60,     // この距離内で攻撃を始める
-        attackCooldown: 90,  // 攻撃後の待ち(フレーム)
+        damageMul: 0.6,
+        speed: 70,
+        aggro: 260,
+        attackRange: 60,
+        attackCooldown: 90,
         xp: 12,
         drops: [
             { id: "potion", chance: 0.25 },
             { id: "tonic", chance: 0.08 },
-            { id: "lealtherCap", chance: 0.04 },
+            { id: "leatherCap", chance: 0.04 },
         ],
     },
     goblin: {
