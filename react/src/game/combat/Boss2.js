@@ -2,13 +2,14 @@ import Phaser from "phaser";
 import BaseBoss, { BS } from "./BaseBoss";
 import { S } from "./Fighter";
 import { DODGE } from "./frameData";
+import Boss2Chain, { CHAIN_ATTACK } from "./Boss2chain.js";
 
 // ───────── 一回きりの演出のスイッチ ─────────
 const ONE_SHOT_EVENTS = true; //trueで必殺技を打つ falseで打たない
 const START_IN_PHASE2 = false; //trueで必殺技を全部うって最初から第二形態  
 const SKIP_PHASE2_TRANSFORM_ATTACK = false; //true 必殺技を打たずに最初から第二形態
 
-const START_IN_PHASE3 = true; //trueで最初から第三形態(第二形態・第三形態の演出を全部飛ばす)
+const START_IN_PHASE3 = false; //trueで最初から第三形態(第二形態・第三形態の演出を全部飛ばす)
 const SKIP_PHASE3_TRANSFORM_ATTACK = false; //true HPが半分を切っても、変身の演出と床の技を打たずに第三形態になる
 
 // テスト用: trueにすると、第三形態の必殺技(変身・氷の雨とビーム・床)だけを繰り返し打つ(通常の技は出ない)
@@ -426,6 +427,10 @@ export const BOSS2_ATTACKS = {
         shake: 0.02,
     },
 
+    // ───────── 鎖のダメージ ─────────
+    // (ゲストが受けたダメージをホストへ名前で伝えるため、ここに登録しておく)
+    chainHit: CHAIN_ATTACK,
+
     // ───────── ファイアドロップ ─────────
     // 地上または空中から、相手の方向に狙いを定めて一直線に突進キック
     // 壁か床に当たると、その場で止まって硬直する
@@ -833,6 +838,9 @@ export default class Boss2 extends BaseBoss {
             this.phase3 = true;
             this.openingDone = true;
         }
+
+        // 鎖(氷の鎖・炎の鎖)。判定と描画と画面下の説明をまとめて扱う
+        this.chain = new Boss2Chain(scene, this);
     }
 
     // ───────── 行動選択 ─────────
@@ -900,6 +908,9 @@ export default class Boss2 extends BaseBoss {
         ) {
             this.phase2 = true;
 
+            // 第一形態の氷の鎖はここで外す(炎の鎖は変身ビームのあとに始まる)
+            this.chain.stop();
+
             for (const p of this.projs) {
                 if (
                     p.active &&
@@ -926,6 +937,9 @@ export default class Boss2 extends BaseBoss {
             this.hp <= this.maxHp * PHASE3_HP_RATIO
         ) {
             this.phase3 = true;
+
+            // 第二形態の炎の鎖はここで外す(切り替えの鎖は再登場の床の技で始まる)
+            this.chain.stop();
 
             if (!SKIP_PHASE3_TRANSFORM_ATTACK) {
                 this.p3Wait = 0;
@@ -1308,6 +1322,9 @@ export default class Boss2 extends BaseBoss {
         } else if (a.change3Appear) {
             // 再登場: 左を炎、右を氷の床で埋める
             this.spawnPhase3Fields();
+
+            // 第三形態の鎖: 氷と炎を一定周期で切り替える
+            this.chain.start("cycle");
 
         } else if (a.backstep) {
             this.fireVolley();
@@ -1710,6 +1727,9 @@ export default class Boss2 extends BaseBoss {
     // ───────── 毎フレームの追加処理 ─────────
 
     tickExtra(players) {
+        // 鎖の判定(2人の距離を見てダメージを与える。ホストだけが動かす)
+        this.chain.tick(players);
+
         // プレイヤーの移動量を記録(氷塊の落下位置の予測に使う)
         for (const pl of players) {
             const previousX = this.lastPlayerX.get(pl);
@@ -1868,6 +1888,7 @@ export default class Boss2 extends BaseBoss {
 
     onDead() {
         this.clearProjs();
+        this.chain.stop();
         this.hailAir = false;
         this.hailHidden = false;
         this.dropJump = false;
@@ -2380,6 +2401,11 @@ export default class Boss2 extends BaseBoss {
                 (arenaLeft + arenaRight) / 2,
                 0
             );
+
+            // 必殺技が終わったので鎖を始める
+            // (氷の雨のあと = 第一形態の氷の鎖 / 変身ビームのあと = 第二形態の炎の鎖)
+            if (a.hail) this.chain.start("ice");
+            if (a.beam) this.chain.start("fire");
 
             this.attack = null;
             this.enter(BS.IDLE);
@@ -3149,6 +3175,8 @@ export default class Boss2 extends BaseBoss {
             // ファイアドロップの回転と、止まった画像のために同期する
             da: Math.round(this.dropAngle * 1000) / 1000,
             ds: this.dropStopped ? 1 : 0,
+            // 鎖のモード・濃さ・判定の有無(ゲストの描画と画面下の説明に使う)
+            ch: this.chain.getSync(),
         };
     }
 
@@ -3158,6 +3186,7 @@ export default class Boss2 extends BaseBoss {
         this.phase3 = !!d?.p3;
         this.dropAngle = Number(d?.da) || 0;
         this.dropStopped = !!d?.ds;
+        this.chain.applySync(d?.ch);
 
         const list =
             Array.isArray(d?.projs)
@@ -3512,6 +3541,9 @@ export default class Boss2 extends BaseBoss {
     }
 
     renderExtra() {
+        // 鎖と画面下の説明(ホスト・ゲスト共通)
+        this.chain.render();
+
         this.drawProjectileHitboxes();
         this.beamGraphics.clear();
 
